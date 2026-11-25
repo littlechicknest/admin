@@ -1,12 +1,12 @@
 import { Check, ChevronLeft, ImagePlus, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { PhotoManager, UploadButton } from '../components/Photos'
 import { Alert, Field, Spinner, useTitle } from '../components/ui'
 import type { Json, Tables } from '../lib/database.types'
 import { asVariants, CATEGORIES, formatMoney, imgSrc, marginPrice, safeUrl, type Variant } from '../lib/shop'
 import { supabase } from '../lib/supabase'
-import { asPhotos, removeFiles, storeImage, type UploadResult } from '../lib/upload'
+import { asPhotos, removeFiles, storeImage, syncFromGelato, type UploadResult } from '../lib/upload'
 import { AdminTitle } from './AdminLayout'
 
 type Row = Tables<'products'>
@@ -225,16 +225,17 @@ export function ProductForm() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [row, setRow] = useState<Row | null>(null)
-  const reloadRow = async () => {
+  const reloadRow = useCallback(async () => {
     const { data } = await supabase.from('products').select('*').eq('id', id!).single()
     if (data) setRow(data)
-  }
+  }, [id])
 
   useEffect(() => {
     if (isNew) return
     supabase.from('products').select('*').eq('id', id!).maybeSingle().then(({ data, error }) => {
       if (error || !data) return setError('Product not found.')
       setRow(data)
+      if (data.source === 'gelato') void syncFromGelato(data.id).then(reloadRow)
       const pf = (data.print_files ?? {}) as Record<string, string>
       setF({
         source: data.source as FormState['source'], title: data.title,
@@ -244,7 +245,7 @@ export function ProductForm() {
         print_front: pf.front ?? '', print_back: pf.back ?? '', is_active: data.is_active, is_featured: data.is_featured,
       })
     })
-  }, [id, isNew])
+  }, [id, isNew, reloadRow])
 
   if (!f) return error ? <Alert>{error}</Alert> : <Spinner />
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((s) => (s ? { ...s, [k]: v } : s))

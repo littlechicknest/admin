@@ -1,4 +1,4 @@
-import { EyeOff, Star, Trash2, Undo2, Upload } from 'lucide-react'
+import { EyeOff, GripVertical, Trash2, Undo2, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Json } from '../lib/database.types'
 import type { Photo } from '../lib/mockups'
@@ -51,17 +51,20 @@ export function UploadButton({ productId, onDone, big = false }: { productId: st
 /** Every picture of a product with its colour, saved as soon as something is changed. */
 export function PhotoManager({ product, onChange }: { product: Product; onChange: () => Promise<void> }) {
   const [photos, setPhotos] = useState(() => asPhotos(product.photos))
+  const [order, setOrder] = useState(product.photo_order)
+  const [drag, setDrag] = useState<{ group: string; i: number; over: number } | null>(null)
   const [from, setFrom] = useState(product)
-  if (from !== product) { setFrom(product); setPhotos(asPhotos(product.photos)) } // reloaded after an upload
+  if (from !== product) { setFrom(product); setPhotos(asPhotos(product.photos)); setOrder(product.photo_order) } // reloaded after an upload
   const [msg, setMsg] = useState<UploadResult | null>(null)
   const { colors, options } = paletteOf(product)
 
   const fromGelato = [...new Map(asPhotos(product.gelato_photos).map((g) => [g.url, { ...g, src: 'gelato' as const }])).values()]
   const inGelato = new Set(fromGelato.map((g) => g.url))
+  const rank = (p: Photo) => (order.includes(p.url) ? order.indexOf(p.url) : order.length)
   const all: Photo[] = [
     ...fromGelato.map((g) => photos.find((p) => p.url === g.url) ?? g),
     ...photos.filter((p) => p.src !== 'gelato' && !inGelato.has(p.url)),
-  ]
+  ].sort((a, b) => rank(a) - rank(b))
   const names = colors.map((c) => c.name)
   const lost = (p: Photo) => names.length > 0 && !names.includes(p.color ?? '')
   const hidden = all.filter((p) => p.hidden)
@@ -69,8 +72,8 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
   const groups = [
     { key: NONE, title: 'Choose a colour for these', items: shown.filter(lost) },
     ...(names.length
-      ? colors.map((c) => ({ key: c.name, title: c.name, hex: c.hex, items: shown.filter((p) => p.color === c.name).sort((a, b) => Number(!!b.main) - Number(!!a.main)) }))
-      : [{ key: 'all', title: 'Photos', items: shown.sort((a, b) => Number(!!b.main) - Number(!!a.main)) }]),
+      ? colors.map((c) => ({ key: c.name, title: c.name, hex: c.hex, items: shown.filter((p) => p.color === c.name) }))
+      : [{ key: 'all', title: 'Photos', items: shown }]),
   ].filter((g) => g.key !== NONE || g.items.length)
 
   /** Applied to what the database has now, so an upload in another window is never overwritten. */
@@ -84,15 +87,25 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
     return !error
   }
   /** Applies a change to some pictures; Gelato pictures get their own correction entry. */
-  const change = (items: Photo[], fn: (p: Photo) => Photo, others: (p: Photo) => Photo = (p) => p) => {
+  const change = (items: Photo[], fn: (p: Photo) => Photo) => {
     const urls = new Set(items.map((p) => p.url))
     return save((list) => {
       const known = new Set(list.map((p) => p.url))
-      return [...list.map((p) => (urls.has(p.url) ? fn(p) : others(p))), ...items.filter((p) => p.src && !known.has(p.url)).map(fn)]
+      return [...list.map((p) => (urls.has(p.url) ? fn(p) : p)), ...items.filter((p) => p.src && !known.has(p.url)).map(fn)]
     })
   }
-  const setColor = (items: Photo[], color: string) => change(items, ({ check: _c, main: _m, ...p }) => ({ ...p, color }))
-  const makeMain = (p: Photo) => change([p], (x) => ({ ...x, main: true }), ({ main, ...x }) => (main && x.color !== p.color ? { ...x, main } : x))
+  const setColor = (items: Photo[], color: string) => change(items, ({ check: _c, ...p }) => ({ ...p, color }))
+  /** Moves a picture to another place among the pictures of its colour. */
+  const move = async (items: Photo[], i: number, to: number) => {
+    if (i === to) return
+    const urls = items.map((p) => p.url)
+    urls.splice(to, 0, ...urls.splice(i, 1))
+    const next = [...order.filter((u) => !urls.includes(u) && all.some((p) => p.url === u)), ...urls]
+    setOrder(next)
+    const { error } = await supabase.from('products').update({ photo_order: next }).eq('id', product.id)
+    if (error) setOrder(order)
+    setMsg(error ? { text: `Not saved: ${error.message}`, problem: true } : { text: 'Saved.', problem: false })
+  }
   const remove = async (p: Photo) => {
     if (p.src === 'gelato') return change([p], (x) => ({ ...x, hidden: true }))
     if (confirm('Delete this picture?') && (await save((list) => list.filter((x) => x.url !== p.url)))) await removeFiles([p.url])
@@ -102,6 +115,8 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
     <section className="space-y-5">
       <UploadButton big productId={product.id} onDone={(r) => { setMsg(r); void onChange() }} />
       <div aria-live="polite">{msg && <Alert tone={msg.problem ? 'error' : 'success'}>{msg.text}</Alert>}</div>
+
+      <p className="flex items-center gap-2 text-base text-olive"><GripVertical className="size-5 shrink-0" aria-hidden /> Drag a picture to change its place, or choose a number under it. Number 1 is the main picture.</p>
 
       {groups.map((g) => (
         <div key={g.key} className={`card p-5 ${g.key === NONE ? 'border-2 border-red-400' : ''}`}>
@@ -119,13 +134,18 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
               </label>
             )}
           </div>
-          {g.items.length === 0 && <p className="text-muted">No picture yet, so the shop shows another colour’s picture here.</p>}
-          <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 2xl:grid-cols-5">
+          {g.items.length === 0 && <p className="text-muted">No picture yet, so the shop shows another colour’s picture here. In Gelato, select the main mockup for this colour and save, or upload a picture above.</p>}
+          <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
             {g.items.map((p, i) => (
-              <li key={p.url} className={`flex flex-col overflow-hidden rounded-xl border-2 bg-paper ${p.check || lost(p) ? 'border-red-400' : 'border-line'}`}>
-                <a href={p.url} target="_blank" rel="noopener noreferrer" className="relative block">
-                  <img src={p.url} alt={`${product.title} ${p.color ?? ''}`} loading="lazy" className="aspect-square w-full bg-cream-2 object-cover" />
-                  {i === 0 && !lost(p) && <span className="absolute top-2 left-2 rounded bg-olive px-2 py-0.5 text-xs font-semibold text-white">Main picture</span>}
+              <li key={p.url} draggable={g.key !== NONE && g.items.length > 1}
+                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.url); setDrag({ group: g.key, i, over: i }) }}
+                onDragOver={(e) => { if (drag?.group === g.key) { e.preventDefault(); if (drag.over !== i) setDrag({ ...drag, over: i }) } }}
+                onDrop={(e) => { if (drag?.group === g.key) { e.preventDefault(); void move(g.items, drag.i, i) } }}
+                onDragEnd={() => setDrag(null)}
+                className={`${g.key !== NONE && g.items.length > 1 ? 'cursor-grab' : ''} ${drag?.group === g.key && drag.i === i ? 'opacity-40' : ''} ${drag?.group === g.key && drag.over === i && drag.i !== i ? 'ring-4 ring-orange' : ''} flex flex-col overflow-hidden rounded-xl border-2 bg-paper ${p.check || lost(p) ? 'border-red-400' : 'border-line'}`}>
+                <a href={p.url} target="_blank" rel="noopener noreferrer" draggable={false} className="relative block cursor-[inherit]">
+                  <img src={p.url} alt={`${product.title} ${p.color ?? ''}`} loading="lazy" draggable={false} className="aspect-square w-full bg-cream-2 object-cover" />
+                  {!lost(p) && <span className="absolute top-2 left-2 rounded bg-olive px-2 py-0.5 text-sm font-semibold text-white">{i === 0 ? '1 · Main picture' : i + 1}</span>}
                 </a>
                 <div className="flex flex-1 flex-col gap-2 p-3">
                   {names.length > 0 && (
@@ -145,8 +165,14 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
                       </select>
                     </label>
                   )}
+                  {g.key !== NONE && g.items.length > 1 && (
+                    <label className="block text-xs font-semibold text-olive">Position
+                      <select className="input mt-1 py-2" value={i} onChange={(e) => void move(g.items, i, Number(e.target.value))}>
+                        {g.items.map((x, n) => <option key={x.url} value={n}>{n === 0 ? '1 (main)' : n + 1}</option>)}
+                      </select>
+                    </label>
+                  )}
                   <div className="mt-auto flex flex-wrap gap-1 text-[13px] font-semibold">
-                    {i > 0 && !lost(p) && <button type="button" onClick={() => void makeMain(p)} className="flex items-center gap-1 rounded px-2 py-1.5 text-olive hover:bg-cream"><Star className="size-4" aria-hidden /> Make main</button>}
                     <button type="button" onClick={() => void remove(p)} className="flex items-center gap-1 rounded px-2 py-1.5 text-red-700 hover:bg-red-50">
                       {p.src === 'gelato' ? <><EyeOff className="size-4" aria-hidden /> Hide</> : <><Trash2 className="size-4" aria-hidden /> Delete</>}
                     </button>

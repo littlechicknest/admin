@@ -291,7 +291,7 @@ export function AdminSettings() {
 
         <section className="card space-y-4 p-6">
           <h2 className="text-xl">Gelato sync</h2>
-          <p className="text-sm text-muted">Products, photos, colours, sizes and costs are copied from your Gelato store automatically every 15 minutes.</p>
+          <p className="text-sm text-muted">Products, photos, colours, sizes and costs are copied from your Gelato store automatically every 5 minutes.</p>
           <p className="text-sm">Last product sync: <strong>{s.last_product_sync ? new Date(s.last_product_sync).toLocaleString() : 'never'}</strong></p>
           <button type="button" onClick={() => sync('sync-products')} disabled={!!syncing} className="btn-dark"><RefreshCw className={`size-4 ${syncing === 'sync-products' ? 'animate-spin' : ''}`} aria-hidden /> {syncing === 'sync-products' ? 'Syncing…' : 'Sync products now'}</button>
           <p className="text-sm text-muted">Order statuses and tracking numbers are pulled from Gelato automatically every 15 minutes. You can also sync now. This also re-sends any paid orders that failed to reach Gelato.</p>

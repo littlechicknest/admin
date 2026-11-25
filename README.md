@@ -12,12 +12,12 @@ npm test && npm run lint && npm run build
 ```
 
 ## Product photos
-1. A new Gelato product appears at the top of **Products** marked **NEW** (within 15 minutes).
+1. A new Gelato product appears at the top of **Products** marked **NEW** (within 5 minutes).
 2. In Gelato: select mockups, download the ZIP, unselect them, keep one as main.
 3. **Upload ZIP** on the product. Each picture's colour comes from the Gelato product code in its folder, then colour words in folder/file names, then (marked "Is this right?") the pixels. Anything unknown is listed first and stays out of the shop until a colour is chosen.
-4. **Edit** shows every picture with its colour (and design option) to correct, make main, hide or delete. Changes save at once.
+4. **Edit** shows every picture with its colour (and design option) to correct, hide or delete. Drag a picture, or pick its **Position**, to rank it: number 1 is the main picture. Changes save at once.
 
-How it is stored: the sync writes `products.gelato_photos`, the admin writes `products.photos` (uploads, plus corrections of Gelato pictures), and the `products_photos` trigger merges both into `variants[].images` / `variants[].by_option`, which the shop, basket and orders read. The sync never overwrites uploads.
+How it is stored: the sync writes `products.gelato_photos`, the admin writes `products.photos` (uploads, plus corrections of Gelato pictures), and the `products_photos` trigger merges both into `variants[].images` / `variants[].by_option`, which the shop, basket and orders read. `products.photo_order` holds the ranking. The sync never overwrites uploads or the ranking. Opening a product or uploading a ZIP syncs that product at once. Gelato only sends a colour's picture after its mockup is saved in Gelato; if Gelato drops it later, the last one stays.
 
 **Website photos** stores replacements in `store_settings.site_images`. Slot names are in `src/pages/SitePhotos.tsx` here and `src/lib/siteImages.tsx` in the shop.
 
@@ -65,7 +65,7 @@ Then sign in at https://littlechicknest.github.io/admin/.
 Both repos: **Settings → Pages → Source: GitHub Actions**. Every push to `main` tests, builds and deploys. The shop reads its Supabase values from repository secrets, this repo from repository variables.
 
 ## Products & pricing
-`sync-products` copies the Gelato store every 15 minutes: title, description, size guide, colours, sizes, photos and cost. Nothing is typed in by hand.
+`sync-products` copies the Gelato store every 5 minutes: title, description, size guide, colours, sizes, photos and cost. Nothing is typed in by hand.
 
 - **Price** = Gelato cost × (1 + margin%), per colour and size, using the margin slider in *Prices & settings*. Gelato costs in GBP are converted to USD with Gelato's own rate.
 - **Photos** from Gelato are copied once to Supabase Storage (Gelato's links expire after 24 h). A colour without photos borrows another colour's, with a note.

@@ -29,7 +29,7 @@ export type Database = {
       products: Table<{
         base_price: number | null; category: string; created_at: string; description: string
         external_product_id: string | null; id: string; images: string[]; is_active: boolean
-        gelato_photos: Json; is_featured: boolean; is_new: boolean; is_sample: boolean; photos: Json; manual_price: number | null; print_files: Json; size_guide: Json; skus: Json; source: string; title: string
+        gelato_photos: Json; is_featured: boolean; is_new: boolean; is_sample: boolean; photo_order: string[]; photos: Json; manual_price: number | null; print_files: Json; size_guide: Json; skus: Json; source: string; title: string
         updated_at: string; variants: Json
       }, 'category' | 'source' | 'title'>
       profiles: Table<{

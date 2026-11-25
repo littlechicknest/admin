@@ -2,7 +2,7 @@
 import { unzipSync } from 'fflate'
 
 /** One picture of a product. `src: 'gelato'` corrects a picture that comes from Gelato; `check` = colour guessed from the pixels. */
-export type Photo = { url: string; color: string | null; option: string | null; src?: 'gelato'; main?: true; hidden?: true; check?: true }
+export type Photo = { url: string; color: string | null; option: string | null; src?: 'gelato'; hidden?: true; check?: true }
 export type Palette = {
   colors: { name: string; hex?: string }[]
   /** design choices ("Design Option 1"); empty for products with normal sizes */

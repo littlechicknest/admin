@@ -62,10 +62,15 @@ function centrePixels(bitmap: ImageBitmap) {
   return g.getImageData(0, 0, 24, 24).data
 }
 
+/** Reads one product from Gelato now instead of waiting for the next timed sync. A failure is fine: the timed sync catches up. */
+export const syncFromGelato = (id: string) => supabase.functions.invoke('sync-products', { body: { id }, timeout: 25_000 })
+
 export type UploadResult = { text: string; problem: boolean }
 
 /** Unpacks, recognises, uploads and saves. Returns a plain-English summary, or null if the owner cancelled. */
 export async function uploadMockups(productId: string, files: File[], onProgress: (text: string) => void): Promise<UploadResult | null> {
+  onProgress('Checking Gelato…')
+  await syncFromGelato(productId)
   onProgress('Opening…')
   const { data: p, error } = await supabase.from('products').select('*').eq('id', productId).single()
   if (error) throw error

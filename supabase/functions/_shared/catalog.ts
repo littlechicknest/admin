@@ -60,6 +60,11 @@ function categoryOf(uid: string): string {
   return /^wom/.test(cut) ? 'Women' : /^men/.test(cut) ? 'Men' : 'Unisex'
 }
 
+/** Gelato drops a colour's picture while it redraws mockups, or once they are unselected: keep the last one until a new one comes. */
+export const keepPhotos = (now: Photo[], before: Photo[], variants: { color: string; sizes: string[] }[]): Photo[] => [...now, ...before.filter((b) =>
+  variants.some((v) => v.color === b.color && (b.option == null || v.sizes.includes(b.option)))
+  && !now.some((n) => n.color === b.color && (b.option == null || n.option == null || n.option === b.option)))]
+
 /** `urls` maps Gelato image ids to their permanent URL (the same picture always has the same URL). `fx` converts Gelato's currency to USD. */
 export function toProduct(p: GelatoProduct, all: GelatoVariant[], urls: Record<string, string>, fx: number) {
   const live = all.filter((v) => !v.isHidden && !v.isDeprecated && v.cost > 0).sort((a, b) => a.position - b.position)

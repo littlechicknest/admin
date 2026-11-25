@@ -1,5 +1,5 @@
-// Mirrors the Gelato store into public.products. Called by pg_cron every 15 minutes or by an admin.
-import { toProduct, type GelatoImage } from '../_shared/catalog.ts'
+// Mirrors the Gelato store into public.products. Called by pg_cron every 5 minutes or by an admin; `{ id }` syncs that one product.
+import { keepPhotos, toProduct, type GelatoImage, type Photo } from '../_shared/catalog.ts'
 import { listProductIds, loadProduct, usdRate } from '../_shared/gelato.ts'
 import { admin, cors, fail, isCronOrAdmin, json } from '../_shared/util.ts'
 
@@ -24,9 +24,10 @@ Deno.serve(async (req) => {
   if (!(await isCronOrAdmin(req))) return fail(req, 403, 'Forbidden')
 
   try {
-    const ids = await listProductIds()
-    const { data: rows, error } = await admin.from('products').select('id,external_product_id,gelato_images,is_active').eq('source', 'gelato')
+    const { id: only } = await req.json().catch(() => ({})) as { id?: string }
+    const { data: rows, error } = await admin.from('products').select('id,external_product_id,gelato_images,gelato_photos,is_active').eq('source', 'gelato')
     if (error) throw error
+    const ids = only ? (rows ?? []).filter((r) => r.id === only).map((r) => r.external_product_id as string) : await listProductIds()
     const known = new Map((rows ?? []).map((r) => [r.external_product_id, r]))
     let rate: Promise<number> | undefined
     let ok = 0
@@ -42,6 +43,7 @@ Deno.serve(async (req) => {
       const product = toProduct(p, variants, urls, await rate)
       if (!product) return
       const gelato_images = Object.fromEntries(p.productImages.map((i) => [i.id, urls[i.id]]))
+      product.gelato_photos = keepPhotos(product.gelato_photos, (row?.gelato_photos ?? []) as Photo[], product.variants)
       const { category, ...synced } = product // the admin may move a product to another category
       const { error } = row
         ? await admin.from('products').update({ ...synced, gelato_images }).eq('id', row.id)
@@ -55,6 +57,8 @@ Deno.serve(async (req) => {
         console.error('product', id, e instanceof Error ? e.message : JSON.stringify(e))
       })))
     }
+
+    if (only) return json(req, { message: `Synced ${ok} of ${ids.length} Gelato products.` })
 
     // deleted in Gelato: hide, so it can't be bought but keeps its reviews and order links
     const gone = (rows ?? []).filter((r) => r.is_active && !ids.includes(r.external_product_id))

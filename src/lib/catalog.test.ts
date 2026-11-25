@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hexFor, parseDescription, toProduct, type GelatoProduct, type GelatoVariant } from '../../supabase/functions/_shared/catalog'
+import { hexFor, keepPhotos, parseDescription, toProduct, type GelatoProduct, type GelatoVariant } from '../../supabase/functions/_shared/catalog'
 
 const variant = (id: string, color: string, size: string, cost: number, extra: Partial<GelatoVariant> = {}): GelatoVariant => ({
   id, productUid: 'apparel_product_gca_hoodie_gsc_pullover_gcu_unisex_gsi_s', cost, currency: 'GBP', position: 1, isHidden: false, isDeprecated: false,
@@ -52,6 +52,14 @@ describe('toProduct', () => {
     expect([mug.variants, mug.category, mug.skus[0].color]).toEqual([[], 'Accessories', null])
     expect(mug.gelato_photos[0]).toEqual({ url: 'navy.jpg', color: null, option: null })
   })
+})
+
+it('keeps the last picture of a colour Gelato stopped sending, and nothing else', () => {
+  const ph = (url: string, color: string, option: string | null = null) => ({ url, color, option })
+  const shirt = [{ color: 'White', sizes: ['S'] }, { color: 'Navy', sizes: ['S'] }]
+  expect(keepPhotos([ph('w2', 'White')], [ph('w1', 'White'), ph('n1', 'Navy'), ph('r1', 'Red')], shirt).map((x) => x.url)).toEqual(['w2', 'n1'])
+  const cap = [{ color: 'White', sizes: ['D1', 'D2'] }]
+  expect(keepPhotos([ph('a2', 'White', 'D1')], [ph('a1', 'White', 'D1'), ph('b1', 'White', 'D2'), ph('c1', 'White', 'D3'), ph('side', 'White')], cap).map((x) => x.url)).toEqual(['a2', 'b1'])
 })
 
 it('splits a description into text, care and size tables', () => {
