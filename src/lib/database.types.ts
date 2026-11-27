@@ -29,7 +29,7 @@ export type Database = {
       products: Table<{
         base_price: number | null; category: string; created_at: string; description: string
         external_product_id: string | null; id: string; images: string[]; is_active: boolean
-        gelato_photos: Json; is_featured: boolean; is_new: boolean; is_sample: boolean; photo_order: string[]; photos: Json; manual_price: number | null; print_files: Json; size_guide: Json; skus: Json; source: string; title: string
+        gelato_images: Json; gelato_photos: Json; is_featured: boolean; is_new: boolean; is_sample: boolean; photo_order: string[]; photos: Json; manual_price: number | null; print_files: Json; size_guide: Json; skus: Json; source: string; title: string
         updated_at: string; variants: Json
       }, 'category' | 'source' | 'title'>
       profiles: Table<{
@@ -41,7 +41,7 @@ export type Database = {
       }, 'product_id' | 'rating'>
       store_settings: Table<{
         checkout_mode: string; express_shipping: number; free_shipping_over: number; global_margin_percent: number; id: number
-        last_api_sync: string | null; last_product_sync: string | null; shipping_flat: number; site_images: Json; updated_at: string
+        last_api_sync: string | null; last_product_sync: string | null; shipping_flat: number; site_images: Json; updated_at: string; usd_rates: Json
       }, never>
     }
     Views: { [_ in never]: never }

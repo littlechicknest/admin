@@ -39,7 +39,7 @@ export async function listProductIds(): Promise<string[]> {
   return ids
 }
 
-/** The list has no images or prices: images come from the product, costs from its variants. */
+/** The list has no images or prices: images come from the product, costs and retail prices from its variants. */
 export async function loadProduct(id: string): Promise<[GelatoProduct, GelatoVariant[]]> {
   const [p, v] = await Promise.all([
     call<GelatoProduct>(`${CATALOG}/${id}`),
@@ -146,9 +146,10 @@ export async function submitOrder(orderId: string): Promise<string> {
       if (!sku) throw new Error(`Gelato no longer offers ${it.title} in ${[it.color, it.size].filter(Boolean).join(' / ')}`)
       const f = (p.print_files ?? {}) as { front?: string; back?: string }
       // a print file set in the admin wins; otherwise Gelato uses the design saved in its store
+      // Gelato rejects a store variant without its productUid, so always send both
       const what = f.front || f.back
         ? { productUid: sku.uid, files: [...(f.front ? [{ type: 'default', url: f.front }] : []), ...(f.back ? [{ type: 'back', url: f.back }] : [])] }
-        : { storeProductVariantId: sku.variant_id }
+        : { storeProductVariantId: sku.variant_id, productUid: sku.uid }
       return [{ itemReferenceId: String(n + 1), quantity: it.quantity, ...what }]
     })
     if (!lines.length) {
@@ -162,7 +163,8 @@ export async function submitOrder(orderId: string): Promise<string> {
     const found = await call<{ orders: GelatoOrder[] }>(`${ORDERS}:search`, { orderReferenceId: order.id })
     const g = found.orders[0] ?? await call<GelatoOrder>(ORDERS, {
       orderType: 'order', orderReferenceId: order.id, customerReferenceId: order.user_id ?? order.id, currency: 'USD',
-      items: lines, shipmentMethodUid: order.shipping_method === 'express' ? 'express' : 'standard',
+      // Gelato's method types are 'normal' and 'express'; leaving it out picks the cheapest
+      items: lines, ...(order.shipping_method === 'express' && { shipmentMethodUid: 'express' }),
       shippingAddress: {
         firstName: first || 'Customer', lastName: rest.join(' ') || first || '-', addressLine1: a.line1 ?? '', addressLine2: a.line2 ?? '', city: a.city ?? '',
         state: a.state ?? '', postCode: a.postal_code ?? '', country: a.country ?? '', email: order.email ?? '', phone: a.phone ?? '',

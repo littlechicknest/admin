@@ -2,15 +2,15 @@ import { EyeOff, GripVertical, Trash2, Undo2, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Json } from '../lib/database.types'
 import type { Photo } from '../lib/mockups'
-import { asPhotos, paletteOf, removeFiles, uploadMockups, type Product, type UploadResult } from '../lib/upload'
+import { asPhotos, oneAtATime, paletteOf, removeFiles, uploadMockups, type Product, type UploadResult } from '../lib/upload'
 import { supabase } from '../lib/supabase'
 import { Alert } from './ui'
 
 const NONE = '__none'
 const ACCEPT = '.zip,application/zip,application/x-zip-compressed,image/*'
 
-/** One big button that takes a ZIP or pictures, by click or by dropping files on it. */
-export function UploadButton({ productId, onDone, big = false }: { productId: string; onDone: (r: UploadResult) => void; big?: boolean }) {
+/** Takes ZIPs or pictures, by click or by dropping files on it, and adds them. With `color`, loose pictures are all that colour. */
+export function UploadButton({ productId, onDone, big = false, color }: { productId: string; onDone: (r: UploadResult) => void; big?: boolean; color?: string }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [over, setOver] = useState(false)
 
@@ -25,7 +25,7 @@ export function UploadButton({ productId, onDone, big = false }: { productId: st
     const files = Array.from(list ?? [])
     if (!files.length || busy) return
     try {
-      const r = await uploadMockups(productId, files, setBusy)
+      const r = await uploadMockups(productId, files, setBusy, files.some((f) => /\.zip$/i.test(f.name)) ? undefined : color)
       if (r) onDone(r)
     } catch (e) {
       onDone({ text: e instanceof Error ? e.message : 'Upload failed. Please try again.', problem: true })
@@ -41,8 +41,8 @@ export function UploadButton({ productId, onDone, big = false }: { productId: st
         ? `flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed p-8 text-center ${over ? 'border-orange bg-orange-soft' : 'border-sand bg-paper hover:border-orange'}`
         : `btn-primary cursor-pointer ${over ? 'ring-4 ring-orange/30' : ''}`} ${busy ? 'pointer-events-none opacity-70' : ''}`}>
       <Upload className={big ? 'size-9 text-orange' : 'size-4'} aria-hidden />
-      <span aria-live="polite" className={big ? 'text-lg font-bold text-olive' : ''}>{busy ?? (big ? 'Click here to upload the Gelato ZIP' : 'Upload ZIP')}</span>
-      {big && !busy && <span className="text-sm text-muted">or drop the ZIP (or pictures) here. Colours are found for you.</span>}
+      <span aria-live="polite" className={big ? 'text-lg font-bold text-olive' : ''}>{busy ?? (big ? 'Click here to add a Gelato ZIP or your own pictures' : color ? `Add ${color} pictures` : 'Add ZIP or pictures')}</span>
+      {big && !busy && <span className="text-sm text-muted">or drop them here. You can add as many ZIPs as you like: new pictures join the ones already here. Colours are found for you.</span>}
       <input type="file" accept={ACCEPT} multiple className="sr-only" disabled={!!busy} onChange={(e) => { void go(e.target.files); e.target.value = '' }} />
     </label>
   )
@@ -79,9 +79,11 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
   /** Applied to what the database has now, so an upload in another window is never overwritten. */
   const save = async (edit: (list: Photo[]) => Photo[]) => {
     setPhotos(edit(photos))
-    const { data, error: readError } = await supabase.from('products').select('photos').eq('id', product.id).single()
-    const next = edit(data ? asPhotos(data.photos) : photos)
-    const error = readError ?? (await supabase.from('products').update({ photos: next as unknown as Json }).eq('id', product.id)).error
+    const { next, error } = await oneAtATime(product.id, async () => {
+      const { data, error } = await supabase.from('products').select('photos').eq('id', product.id).single()
+      const next = edit(data ? asPhotos(data.photos) : photos)
+      return { next, error: error ?? (await supabase.from('products').update({ photos: next as unknown as Json }).eq('id', product.id)).error }
+    })
     setPhotos(error ? photos : next)
     setMsg(error ? { text: `Not saved: ${error.message}`, problem: true } : { text: 'Saved.', problem: false })
     return !error
@@ -111,10 +113,12 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
     if (confirm('Delete this picture?') && (await save((list) => list.filter((x) => x.url !== p.url)))) await removeFiles([p.url])
   }
 
+  const uploaded = (r: UploadResult) => { setMsg(r); void onChange() }
+
   return (
     <section className="space-y-5">
-      <UploadButton big productId={product.id} onDone={(r) => { setMsg(r); void onChange() }} />
-      <div aria-live="polite">{msg && <Alert tone={msg.problem ? 'error' : 'success'}>{msg.text}</Alert>}</div>
+      <UploadButton big productId={product.id} onDone={uploaded} />
+      <div aria-live="polite" className="sticky top-2 z-10">{msg && <Alert tone={msg.problem ? 'error' : 'success'}>{msg.text}</Alert>}</div>
 
       <p className="flex items-center gap-2 text-base text-olive"><GripVertical className="size-5 shrink-0" aria-hidden /> Drag a picture to change its place, or choose a number under it. Number 1 is the main picture.</p>
 
@@ -125,16 +129,19 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
               {'hex' in g && <span className="size-7 rounded-full ring-1 ring-black/15" style={{ background: g.hex ?? '#ccc' }} />}
               {g.title} <span className="font-sans text-sm font-normal text-muted">{g.items.length || 'no'} {g.items.length === 1 ? 'picture' : 'pictures'}</span>
             </h2>
-            {names.length > 1 && g.items.length > 1 && (
-              <label className="flex items-center gap-2 text-sm text-muted">Change all {g.items.length} to
-                <select className="input w-auto py-2" value="" onChange={(e) => void setColor(g.items, e.target.value)}>
-                  <option value="" disabled>choose…</option>
-                  {names.filter((n) => n !== g.key).map((n) => <option key={n}>{n}</option>)}
-                </select>
-              </label>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              {names.length > 1 && g.items.length > 1 && (
+                <label className="flex items-center gap-2 text-sm text-muted">Change all {g.items.length} to
+                  <select className="input w-auto py-2" value="" onChange={(e) => void setColor(g.items, e.target.value)}>
+                    <option value="" disabled>choose…</option>
+                    {names.filter((n) => n !== g.key).map((n) => <option key={n}>{n}</option>)}
+                  </select>
+                </label>
+              )}
+              {names.length > 0 && g.key !== NONE && <UploadButton productId={product.id} color={g.key} onDone={uploaded} />}
+            </div>
           </div>
-          {g.items.length === 0 && <p className="text-muted">No picture yet, so the shop shows another colour’s picture here. In Gelato, select the main mockup for this colour and save, or upload a picture above.</p>}
+          {g.items.length === 0 && <p className="text-muted">No picture yet, so the shop shows another colour’s picture here. In Gelato, select the main mockup for this colour and save, or add your own picture with the button.</p>}
           <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
             {g.items.map((p, i) => (
               <li key={p.url} draggable={g.key !== NONE && g.items.length > 1}

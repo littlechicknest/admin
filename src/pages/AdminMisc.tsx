@@ -35,7 +35,7 @@ export function AdminReviews() {
 
   return (
     <>
-      <AdminTitle title="Reviews" />
+      <AdminTitle title="Reviews" sub="New reviews wait here until you approve them." />
       {error && <div className="mb-4"><Alert>{error}</Alert></div>}
       {!rows ? <Spinner /> : rows.length === 0 ? <p className="card p-8 text-center text-muted">No reviews yet.</p> : (
         <ul className="space-y-3">
@@ -91,7 +91,7 @@ export function AdminMessages() {
 
   return (
     <>
-      <AdminTitle title="Messages" />
+      <AdminTitle title="Messages" sub="What people sent through the contact form." />
       {error && <div className="mb-4"><Alert>{error}</Alert></div>}
       {!rows ? <Spinner /> : rows.length === 0 ? <p className="card p-8 text-center text-muted">No messages yet.</p> : (
         <ul className="space-y-3">
@@ -159,7 +159,7 @@ export function AdminCustomers() {
 
   return (
     <>
-      <AdminTitle title="Customers">
+      <AdminTitle title="Customers" sub="Everyone who made an account in the shop.">
         <button type="button" onClick={saveCustomers} disabled={!rows?.length} className="btn-primary"><Download className="size-4" aria-hidden /> Download customer emails (CSV)</button>
         <button type="button" onClick={saveNewsletter} disabled={!subs.length} className="btn-dark"><Download className="size-4" aria-hidden /> Download {subs.length} newsletter emails (CSV)</button>
       </AdminTitle>
@@ -187,7 +187,7 @@ export function AdminCustomers() {
 /* ------------------------------------------------------------ settings */
 
 export function AdminSettings() {
-  useTitle('Prices & settings')
+  useTitle('Settings')
   const [s, setS] = useState<Tables<'store_settings'> | null>(null)
   const [margin, setMargin] = useState(50)
   const [shipping, setShipping] = useState('0')
@@ -239,13 +239,13 @@ export function AdminSettings() {
 
   return (
     <>
-      <AdminTitle title="Prices & settings" />
+      <AdminTitle title="Settings" sub="Prices, delivery, payments and the Gelato connection." />
       {msg && <div className="mb-4"><Alert tone={msg.tone}>{msg.text}</Alert></div>}
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="card space-y-5 p-6">
           <div>
             <h2 className="text-xl">Shop prices</h2>
-            <p className="text-sm text-muted">Shop price = what Gelato charges you + this percentage, for every colour and size. Prices typed in Gelato are not used here.</p>
+            <p className="text-sm text-muted">Gelato products sell at the price you set in Gelato. This percentage is only used for a Gelato product that has no price set there: shop price = what Gelato charges you + this percentage. Your own products use the price you type on the product.</p>
           </div>
           <div>
             <div className="mb-2 flex items-baseline justify-between">
@@ -278,7 +278,7 @@ export function AdminSettings() {
           <fieldset className="rounded-lg border border-line p-4">
             <legend className="px-1 text-sm font-bold text-olive">Checkout mode</legend>
             <div className="grid gap-2 sm:grid-cols-2">
-              {([['test', 'Test (preview)', 'Orders are saved as test orders. No payment, nothing sent to print.'], ['live', 'Live (Stripe)', 'Customers pay by card on Stripe. Switches on by itself once STRIPE_SECRET_KEY is in Supabase secrets.']] as const).map(([v, label, text]) => (
+              {([['test', 'Test (preview)', 'Orders are saved as test orders. No payment, nothing sent to print.'], ['live', 'Live (Stripe)', 'Customers pay by card on Stripe. Paid orders go to Gelato for printing by themselves.']] as const).map(([v, label, text]) => (
                 <label key={v} className={`flex cursor-pointer gap-2.5 rounded-lg border-2 p-3 text-sm ${mode === v ? 'border-orange bg-orange-soft/40' : 'border-line'}`}>
                   <input type="radio" name="mode" checked={mode === v} onChange={() => setMode(v)} className="mt-0.5 accent-orange" />
                   <span><strong className="block text-olive">{label}</strong><span className="text-xs text-muted">{text}</span></span>

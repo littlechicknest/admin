@@ -47,7 +47,12 @@ async function store(folder: string, source: Blob, max: number): Promise<{ url: 
   return { url: bucket().getPublicUrl(path).data.publicUrl, bitmap }
 }
 
-export const storeImage = async (folder: string, file: Blob) => (await store(folder, file, 2000)).url
+/** Saves any picture as WebP (max `max` px on its longest side) and returns its public link. */
+export async function storeImage(folder: string, file: Blob, max = 2000): Promise<string> {
+  const { url, bitmap } = await store(folder, file, max)
+  bitmap.close()
+  return url
+}
 
 export async function removeFiles(urls: string[]) {
   const paths = urls.map((u) => u.split('/product-images/')[1]).filter(Boolean)
@@ -67,8 +72,11 @@ export const syncFromGelato = (id: string) => supabase.functions.invoke('sync-pr
 
 export type UploadResult = { text: string; problem: boolean }
 
-/** Unpacks, recognises, uploads and saves. Returns a plain-English summary, or null if the owner cancelled. */
-export async function uploadMockups(productId: string, files: File[], onProgress: (text: string) => void): Promise<UploadResult | null> {
+/** One read-then-save of a product's pictures at a time, also across tabs, so two uploads never lose each other's pictures. */
+export const oneAtATime = <T>(productId: string, fn: () => Promise<T>) => navigator.locks.request(`photos-${productId}`, fn)
+
+/** Unpacks, recognises, uploads and adds to what is there. `color` = the owner says what it shows. Returns a plain-English summary, or null if the owner cancelled. */
+export async function uploadMockups(productId: string, files: File[], onProgress: (text: string) => void, color?: string): Promise<UploadResult | null> {
   onProgress('Checking Gelato…')
   await syncFromGelato(productId)
   onProgress('Opening…')
@@ -76,21 +84,24 @@ export async function uploadMockups(productId: string, files: File[], onProgress
   if (error) throw error
   const palette = paletteOf(p)
   const { pics, skipped } = await readPics(files)
-  if (!pics.length) throw new Error('No pictures found in there. Please choose the ZIP file you downloaded from Gelato.')
+  if (!pics.length) throw new Error('No pictures found in there. Please choose a Gelato ZIP file or pictures.')
   if (!looksRight(pics.map((x) => x.path), palette.skus)
     && !confirm(`This ZIP looks like it belongs to a different product, not "${p.title}".\n\nUpload it here anyway?`)) return null
 
   pics.sort((a, b) => viewRank(a.path) - viewRank(b.path) || a.path.localeCompare(b.path))
-  const have = new Set(asPhotos(p.photos).map((x) => x.url))
+  // the same picture may be added to several colours (a size chart), but only once to each
+  const folder = `mockups/${p.id}${color ? `/${color.replace(/[^a-z0-9]+/gi, '-')}` : ''}`
+  const have = asPhotos(p.photos)
+  const fileOf = (url: string) => url.split('/').at(-1)
   const added = new Map<string, Photo>()
   const order = new Map<string, number>()
   let done = 0, repeats = 0
   const one = async (pic: Pic, i: number) => {
     try {
-      const { url, bitmap } = await store(`mockups/${p.id}`, pic.blob, 1600)
-      if (have.has(url) || added.has(url)) repeats++
+      const { url, bitmap } = await store(folder, pic.blob, 1600)
+      if (added.has(url) || have.some((x) => x.url === url || (fileOf(x.url) === fileOf(url) && (!color || x.color === color)))) repeats++
       else {
-        const found = detect(pic.path, palette)
+        const found = { ...detect(pic.path, palette), ...(color && { color }) }
         const guess = found.color || !palette.colors.length ? null : voteColor(centrePixels(bitmap), palette.colors)
         order.set(url, i)
         added.set(url, { url, color: found.color ?? guess, option: found.option, ...(guess && { check: true as const }) })
@@ -106,11 +117,13 @@ export async function uploadMockups(productId: string, files: File[], onProgress
 
   const list = [...added.values()].sort((a, b) => order.get(a.url)! - order.get(b.url)!)
   if (list.length) {
-    // the sync or another tab may have changed the product meanwhile
-    const { data: fresh, error: e2 } = await supabase.from('products').select('photos').eq('id', p.id).single()
-    if (e2) throw e2
-    const { error: e3 } = await supabase.from('products').update({ photos: [...asPhotos(fresh.photos), ...list] as unknown as Json, is_new: false }).eq('id', p.id)
-    if (e3) throw e3
+    await oneAtATime(p.id, async () => {
+      // the sync or another tab may have changed the product meanwhile
+      const { data: fresh, error: e2 } = await supabase.from('products').select('photos').eq('id', p.id).single()
+      if (e2) throw e2
+      const { error: e3 } = await supabase.from('products').update({ photos: [...asPhotos(fresh.photos), ...list] as unknown as Json, is_new: false }).eq('id', p.id)
+      if (e3) throw e3
+    })
   }
 
   const per = new Map<string, number>()

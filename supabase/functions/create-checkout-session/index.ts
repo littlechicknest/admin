@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
   }
 
   const out = await Promise.all(lines.map((l) => {
-    const sku = (byId.get(l.product_id)!.skus as Sku[]).find((s) => s.color === l.color && s.size === l.size)
+    const sku = ((byId.get(l.product_id)!.skus ?? []) as Sku[]).find((s) => s.color === l.color && s.size === l.size)
     return sku ? isOutOfStock(sku, l.quantity, address, user.email ?? '') : false
   }))
   const gone = lines.find((_, i) => out[i])

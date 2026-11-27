@@ -1,3 +1,4 @@
+import { CreditCard, Images, Package, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Alert, Spinner, useTitle } from '../components/ui'
@@ -17,6 +18,7 @@ export default function Overview() {
   const [days, setDays] = useState<Day[] | null>(null)
   const [recent, setRecent] = useState<Recent[]>([])
   const [counts, setCounts] = useState({ toFulfil: 0, problems: 0, reviews: 0, messages: 0, fresh: 0 })
+  const [live, setLive] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -28,7 +30,9 @@ export default function Overview() {
       supabase.from('reviews').select('id', head).eq('is_approved', false),
       supabase.from('contact_messages').select('id', head).eq('is_read', false),
       supabase.from('products').select('id', head).eq('is_new', true),
-    ]).then(([sales, rec, f, p, r, m, n]) => {
+      supabase.from('store_settings').select('checkout_mode').eq('id', 1).single(),
+    ]).then(([sales, rec, f, p, r, m, n, s]) => {
+      setLive(s.data?.checkout_mode === 'live')
       const err = [sales, rec, f, p, r, m, n].find((x) => x.error)?.error
       if (err) return setError(err.message)
       setDays((sales.data ?? []).map((d) => ({ ...d, revenue: Number(d.revenue) })))
@@ -57,7 +61,17 @@ export default function Overview() {
 
   return (
     <>
-      <AdminTitle title="Home" />
+      <AdminTitle title="Home" sub="How the shop is doing, and anything that needs you." />
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <Link to="/products/new" className="card flex items-center gap-3 p-4 font-semibold text-olive hover:shadow-[var(--shadow-lift)]"><span className="grid size-10 place-items-center rounded-full bg-orange text-white"><Plus className="size-5" aria-hidden /></span> Add my own product</Link>
+        <Link to="/orders" className="card flex items-center gap-3 p-4 font-semibold text-olive hover:shadow-[var(--shadow-lift)]"><span className="grid size-10 place-items-center rounded-full bg-olive text-white"><Package className="size-5" aria-hidden /></span> See orders</Link>
+        <Link to="/photos" className="card flex items-center gap-3 p-4 font-semibold text-olive hover:shadow-[var(--shadow-lift)]"><span className="grid size-10 place-items-center rounded-full bg-olive text-white"><Images className="size-5" aria-hidden /></span> Change website photos</Link>
+      </div>
+      {live != null && (
+        <Link to="/settings" className={`mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold ${live ? 'border-leaf/40 bg-[#f1f7ea] text-olive' : 'border-yolk/50 bg-yolk/10 text-olive'}`}>
+          <CreditCard className="size-4" aria-hidden /> {live ? 'Card payments are on: customers pay with Stripe.' : 'Test mode: customers cannot pay yet. Switch to Live in Settings.'}
+        </Link>
+      )}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         {tiles.map((t) => {
           const body = (
@@ -114,6 +128,7 @@ export default function Overview() {
 /** Single-series bar chart: no legend (title names it), hover tooltip, sr-only table. */
 function RevenueChart({ days }: { days: Day[] }) {
   const [hover, setHover] = useState<number | null>(null)
+  if (!days.length) return <p className="py-8 text-center text-muted">No sales yet.</p>
   const W = 720, H = 220, pad = { l: 48, r: 8, t: 8, b: 24 }
   // floor of $10 keeps ticks whole ($0/$5/$10) when there are no sales
   const max = Math.max(10, ...days.map((d) => d.revenue))

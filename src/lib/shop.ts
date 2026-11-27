@@ -3,6 +3,8 @@ import type { Json } from './database.types'
 export const SHOP_URL = 'https://littlechicknest.github.io/littlechicknest/'
 
 export const CATEGORIES = ['Men', 'Women', 'Kids', 'Accessories'] as const
+/** Every category a product can be in (the database allows exactly these). Unisex shows under both Men and Women. */
+export const ALL_CATEGORIES = ['Men', 'Women', 'Unisex', 'Kids', 'Accessories'] as const
 /** `option` names what `sizes` holds when it isn't sizes (e.g. a design choice). */
 export type Variant = { color: string; hex?: string; option?: string; sizes: string[]; images: string[] }
 
@@ -22,6 +24,14 @@ export const formatMoney = (n: number | string | null | undefined) => money.form
 /** Same formula as public.product_price() in SQL; used only for the admin live preview. */
 export const marginPrice = (base: number, marginPercent: number) =>
   Math.round(Math.round(base * 100) * (100 + marginPercent) / 100) / 100
+
+/** Lowest shop price of a product: the Gelato retail price per colour/size, else cost + margin; own products have one price. */
+export function fromPrice(p: { source: string; manual_price: number | null; base_price: number | null; skus: Json }, margin: number) {
+  if (p.source === 'manual') return Number(p.manual_price ?? 0)
+  const skus = Array.isArray(p.skus) ? (p.skus as { cost?: number; price?: number }[]) : []
+  const prices = skus.map((s) => (Number(s.price) > 0 ? Number(s.price) : marginPrice(Number(s.cost ?? 0), margin))).filter((n) => n > 0)
+  return prices.length ? Math.min(...prices) : marginPrice(Number(p.base_price ?? 0), margin)
+}
 
 export const asVariants = (v: Json): Variant[] =>
   Array.isArray(v)

@@ -53,7 +53,7 @@ export default function SitePhotos() {
 
   return (
     <>
-      <AdminTitle title="Website photos" />
+      <AdminTitle title="Website photos" sub="Change the big pictures on the shop pages." />
       <p className="mb-5 max-w-2xl text-muted">Click <strong>Change picture</strong> and choose a photo from your computer. It goes live on the website straight away. Product photos are changed under Products.</p>
       <div aria-live="polite" className="sticky top-2 z-20 mb-4">{msg && <Alert tone={msg.tone}>{msg.text}</Alert>}</div>
       {!images ? !msg && <Spinner /> : SLOTS.map(([group, slots]) => (

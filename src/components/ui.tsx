@@ -1,5 +1,5 @@
 import { Check, Info, Loader2, Star } from 'lucide-react'
-import { useEffect, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 export function useTitle(title: string) {
   useEffect(() => {
@@ -48,3 +48,32 @@ export function Stars({ value, size = 'size-4' }: { value: number; size?: string
   )
 }
 
+
+/** A white box with a heading and a short plain-English explanation. */
+export const Section = ({ title, sub, children, className = '' }: { title: string; sub?: ReactNode; children: ReactNode; className?: string }) => (
+  <section className={`card space-y-4 p-5 sm:p-6 ${className}`}>
+    <div>
+      <h2 className="font-sans text-lg font-bold">{title}</h2>
+      {sub && <p className="mt-0.5 text-sm text-muted">{sub}</p>}
+    </div>
+    {children}
+  </section>
+)
+
+/** "Saved" style message that slides in at the bottom and goes away by itself. */
+export function useToast(): [ReactNode, (text: string, problem?: boolean) => void] {
+  const [msg, setMsg] = useState<{ text: string; problem: boolean } | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const show = useCallback((text: string, problem = false) => {
+    setMsg({ text, problem })
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => setMsg(null), problem ? 7000 : 2500)
+  }, [])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  const node = msg && (
+    <div role={msg.problem ? 'alert' : 'status'} className={`fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 animate-fade-up items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold shadow-lg lg:left-[calc(50%+130px)] ${msg.problem ? 'bg-red-700 text-white' : 'bg-olive text-white'}`}>
+      {msg.problem ? <Info className="size-4" aria-hidden /> : <Check className="size-4" aria-hidden />} {msg.text}
+    </div>
+  )
+  return [node, show]
+}

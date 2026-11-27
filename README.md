@@ -11,10 +11,18 @@ npm run dev                  # http://localhost:5173/admin/
 npm test && npm run lint && npm run build
 ```
 
+## Products
+- **Products** lists everything with tabs (In shop, Hidden, Need photos, My own products), search and a category filter. Change a product's category right in the list, or tick several and use **Move to / Show in shop / Hide**.
+- **Add my own product** makes a product that is not from Gelato (`source = 'manual'`): photos, name, description, price, optional sizes and colours. Paid orders with these items are marked *manual fulfilment*: the owner posts them. Gelato items in the same order still go to Gelato.
+- Prices: Gelato products sell at the retail price set in Gelato (`skus[].price`); the margin in Settings is only the fallback when Gelato has none.
+
+## Fast pictures
+Every picture uploaded in the admin is resized (max 1600-2000 px) and saved as WebP in the browser before upload. Gelato sends JPGs, so while the admin is open `src/lib/optimize.ts` converts any JPG/PNG in our storage to WebP every 10 minutes and points the product (and website photos) at the new file. The old file is kept so past orders still show it. Supabase's own image resizing needs a paid plan, which is why this runs in the admin.
+
 ## Product photos
 1. A new Gelato product appears at the top of **Products** marked **NEW** (within 5 minutes).
 2. In Gelato: select mockups, download the ZIP, unselect them, keep one as main.
-3. **Upload ZIP** on the product. Each picture's colour comes from the Gelato product code in its folder, then colour words in folder/file names, then (marked "Is this right?") the pixels. Anything unknown is listed first and stays out of the shop until a colour is chosen.
+3. **Add ZIP or pictures** on the product, as often as needed: pictures are added, never replaced. On the edit page **Add _colour_ pictures** puts your own pictures straight into that colour. Otherwise each picture's colour comes from the Gelato product code in its folder, then colour words in folder/file names, then (marked "Is this right?") the pixels. Anything unknown is listed first and stays out of the shop until a colour is chosen.
 4. **Edit** shows every picture with its colour (and design option) to correct, hide or delete. Drag a picture, or pick its **Position**, to rank it: number 1 is the main picture. Changes save at once.
 
 How it is stored: the sync writes `products.gelato_photos`, the admin writes `products.photos` (uploads, plus corrections of Gelato pictures), and the `products_photos` trigger merges both into `variants[].images` / `variants[].by_option`, which the shop, basket and orders read. `products.photo_order` holds the ranking. The sync never overwrites uploads or the ranking. Opening a product or uploading a ZIP syncs that product at once. Gelato only sends a colour's picture after its mockup is saved in Gelato; if Gelato drops it later, the last one stays.
@@ -33,8 +41,10 @@ How it is stored: the sync writes `products.gelato_photos`, the admin writes `pr
 - The migrations in `supabase/migrations/` are applied: tables, RLS, Storage bucket, Vault tokens and the cron jobs.
 - The Edge Functions in `supabase/functions/` are deployed.
 
-### 2. Go live with Stripe (the only key left to add)
-In the Supabase dashboard, open **Edge Functions → Secrets** and add `STRIPE_SECRET_KEY` (Stripe → Developers → API keys).
+### 2. Go live with Stripe (done 2026-11-27)
+In the Supabase dashboard, open **Edge Functions → Secrets** and add the Stripe secret or restricted key (Stripe → Developers → API keys). Any secret name works (the live one is `strip_secrets`); the functions find the value that starts with `sk_`/`rk_`. A restricted key needs write access to Checkout Sessions and Webhook Endpoints. The publishable `pk_` key is not needed: checkout is Stripe's hosted page.
+
+The Stripe account is shared with another shop (WooCommerce), so `stripe-webhook` ignores events whose `order_id` is not one of ours.
 
 Within 15 minutes the shop registers its own Stripe webhook, stores the signing secret in Vault and switches checkout from **Test** to **Live**. To do it at once, press *Prices & settings → Sync orders now*.
 

@@ -7,9 +7,12 @@ import { admin } from '../_shared/util.ts'
 const cryptoProvider = Stripe.createSubtleCryptoProvider()
 
 const reply = (status: number, body: string) => new Response(body, { status })
+// the Stripe account is shared with another shop, whose events also arrive here: only our orders have uuid ids
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const ourOrder = (s: Stripe.Checkout.Session) => (UUID.test(s.metadata?.order_id ?? '') ? s.metadata!.order_id : null)
 
 async function markPaid(session: Stripe.Checkout.Session) {
-  const orderId = session.metadata?.order_id
+  const orderId = ourOrder(session)
   if (!orderId || session.payment_status !== 'paid') return
   // newer API versions use collected_information.shipping_details, older ones shipping_details
   type Ship = { name?: string; address?: Stripe.Address }
@@ -61,8 +64,8 @@ Deno.serve(async (req) => {
         await markPaid(event.data.object)
         break
       case 'checkout.session.expired': {
-        const s = event.data.object
-        if (s.metadata?.order_id) await admin.from('orders').delete().eq('id', s.metadata.order_id).eq('status', 'pending')
+        const id = ourOrder(event.data.object)
+        if (id) await admin.from('orders').delete().eq('id', id).eq('status', 'pending')
         break
       }
       case 'charge.refunded': {

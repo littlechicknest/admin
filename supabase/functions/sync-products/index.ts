@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
     const ids = only ? (rows ?? []).filter((r) => r.id === only).map((r) => r.external_product_id as string) : await listProductIds()
     const known = new Map((rows ?? []).map((r) => [r.external_product_id, r]))
     let rate: Promise<number> | undefined
+    let gbp: Promise<number> | undefined // USD per GBP, for the shop's currency switch
     let ok = 0
     const failed: string[] = []
 
@@ -37,6 +38,7 @@ Deno.serve(async (req) => {
       const [p, variants] = await loadProduct(id)
       if (!variants.length) return
       rate ??= usdRate(variants[0].productUid, variants[0].currency)
+      gbp ??= variants[0].currency === 'GBP' ? rate : usdRate(variants[0].productUid, 'GBP')
       const row = known.get(id)
       const urls = { ...(row?.gelato_images as Record<string, string> | undefined) }
       for (const img of p.productImages) urls[img.id] ??= await keepImage(img)
@@ -57,6 +59,10 @@ Deno.serve(async (req) => {
         console.error('product', id, e instanceof Error ? e.message : JSON.stringify(e))
       })))
     }
+
+    // same rate the prices were converted with, so a GBP price shows back exactly as set in Gelato
+    const usd_rates = gbp && { GBP: await gbp.catch(() => 0) }
+    if (usd_rates?.GBP) await admin.from('store_settings').update({ usd_rates }).eq('id', 1)
 
     if (only) return json(req, { message: `Synced ${ok} of ${ids.length} Gelato products.` })
 

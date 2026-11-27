@@ -3,11 +3,12 @@
 export type GelatoImage = { id: string; fileUrl: string; isPrimary: boolean; productVariantIds: string[] }
 export type GelatoProduct = { id: string; title: string; description: string | null; productImages: GelatoImage[]; productVariantOptions: { name: string; values: string[] }[] }
 export type GelatoVariant = {
-  id: string; productUid: string; cost: number; currency: string; position: number; isHidden: boolean; isDeprecated: boolean
+  id: string; productUid: string; cost: number; price?: number | null; currency: string; position: number; isHidden: boolean; isDeprecated: boolean
   variantOptions: { name: string; value: string }[]
 }
 export type Photo = { url: string; color: string | null; option: string | null }
-export type Sku = { color: string | null; size: string | null; variant_id: string; uid: string; cost: number }
+/** cost = what Gelato charges us; price = the retail price set in Gelato (USD). The shop sells at price, or cost + margin if none is set. */
+export type Sku = { color: string | null; size: string | null; variant_id: string; uid: string; cost: number; price?: number }
 
 const isColor = (name: string) => /^colou?r$/i.test(name)
 
@@ -65,6 +66,8 @@ export const keepPhotos = (now: Photo[], before: Photo[], variants: { color: str
   variants.some((v) => v.color === b.color && (b.option == null || v.sizes.includes(b.option)))
   && !now.some((n) => n.color === b.color && (b.option == null || n.option == null || n.option === b.option)))]
 
+const usd = (n: number, fx: number) => Math.round(n * fx * 100) / 100
+
 /** `urls` maps Gelato image ids to their permanent URL (the same picture always has the same URL). `fx` converts Gelato's currency to USD. */
 export function toProduct(p: GelatoProduct, all: GelatoVariant[], urls: Record<string, string>, fx: number) {
   const live = all.filter((v) => !v.isHidden && !v.isDeprecated && v.cost > 0).sort((a, b) => a.position - b.position)
@@ -75,7 +78,9 @@ export function toProduct(p: GelatoProduct, all: GelatoVariant[], urls: Record<s
     const size = v.variantOptions.filter((o) => !isColor(o.name)).map((o) => o.value).join(' / ') || null
     return { color: color ?? (size ? 'Standard' : null), size }
   }
-  const skus: Sku[] = live.map((v) => ({ ...opts(v), variant_id: v.id, uid: v.productUid, cost: Math.round(v.cost * fx * 100) / 100 }))
+  const skus: Sku[] = live.map((v) => ({
+    ...opts(v), variant_id: v.id, uid: v.productUid, cost: usd(v.cost, fx), ...(Number(v.price) > 0 && { price: usd(Number(v.price), fx) }),
+  }))
   const skuById = new Map(skus.map((s) => [s.variant_id, s]))
   const option = p.productVariantOptions.find((o) => !isColor(o.name) && !/size/i.test(o.name))?.name
 

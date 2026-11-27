@@ -43,7 +43,7 @@ export function AdminOrders() {
 
   return (
     <>
-      <AdminTitle title="Orders" />
+      <AdminTitle title="Orders" sub="Paid orders go to Gelato for printing by themselves. Your own products you post yourself." />
       <div className="mb-4 flex flex-col gap-3 sm:flex-row">
         <label className="sm:w-60"><span className="sr-only">Status</span>
           <select className="input" value={status} onChange={(e) => { setPage(0); setParams(e.target.value === 'all' ? {} : { status: e.target.value }) }}>

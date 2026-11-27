@@ -67,8 +67,11 @@ export async function isCronOrAdmin(req: Request): Promise<boolean> {
 
 export const round2 = (n: number) => Math.round(n * 100) / 100
 
-type Priced = { source: string; manual_price: number | null; skus: { color: string | null; size: string | null; cost: number }[] }
-/** Same rule as public.sku_price() in SQL (whole cents, so half-cents round the same). 0 = this colour/size is not for sale. */
-export const skuPrice = (p: Priced, color: string | null, size: string | null, margin: number) =>
-  p.source === 'manual' ? round2(Number(p.manual_price))
-    : Math.round(Math.round((p.skus.find((s) => s.color === color && s.size === size)?.cost ?? 0) * 100) * (100 + margin) / 100) / 100
+type Priced = { source: string; manual_price: number | null; skus: { color: string | null; size: string | null; cost: number; price?: number }[] }
+/** Same rule as public.sku_price() in SQL: the Gelato retail price, else cost + margin in whole cents. 0 = this colour/size is not for sale. */
+export const skuPrice = (p: Priced, color: string | null, size: string | null, margin: number) => {
+  if (p.source === 'manual') return round2(Number(p.manual_price))
+  const s = (p.skus ?? []).find((x) => x.color === color && x.size === size)
+  if (Number(s?.price) > 0) return round2(Number(s!.price))
+  return Math.round(Math.round((s?.cost ?? 0) * 100) * (100 + margin) / 100) / 100
+}

@@ -71,3 +71,11 @@ it('splits a description into text, care and size tables', () => {
 it('finds swatches for unknown colour names by their last known word', () => {
   expect([hexFor('Ceramic Red'), hexFor('Heather Yellow Gold'), hexFor('Zzz')]).toEqual(['#c8202f', '#f0b94a', undefined])
 })
+
+describe('retail prices', () => {
+  it('keeps the Gelato retail price per colour/size, converted to USD', () => {
+    const p = toProduct(product, [variant('w', 'White', 'S', 10, { price: 20 }), variant('n', 'Navy', 'S', 10)], urls, 1.5)!
+    expect(p.skus.find((s) => s.color === 'White')?.price).toBe(30)
+    expect(p.skus.find((s) => s.color === 'Navy')?.price).toBeUndefined()
+  })
+})
