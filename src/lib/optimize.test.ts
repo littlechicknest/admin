@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { needsWebp, swap } from './optimize'
+import { needsWebp, swap } from './links'
 import { fromPrice } from './shop'
 
 const S = 'https://x.supabase.co/storage/v1/object/public/product-images/'
