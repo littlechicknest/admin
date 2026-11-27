@@ -53,3 +53,12 @@ it('unpacks zips and ignores junk', async () => {
   expect(pics.map((p) => p.path)).toEqual(['Red/a.PNG', 'Red/b.webp', 'c.jpg'])
   expect(skipped).toEqual(['notes.txt'])
 })
+
+describe('who wears it', () => {
+  it('reads man / woman from Gelato file names', () => {
+    const p = palette(['Black'])
+    expect(['a/person4_female_front.webp', 'a/person3_male_front.webp', 'a/premium_model_female_woman1_back-1.webp',
+      'a/premium_model_male_man2_editorial-1.webp', 'a/new_flatlay_back.webp', 'male/flatlay.png', 'a/womens-tee.jpg'].map((x) => detect(x, p).gender))
+      .toEqual(['female', 'male', 'female', 'male', null, null, 'female'])
+  })
+})

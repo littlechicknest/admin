@@ -1,6 +1,7 @@
 import { ArrowLeft, ArrowRight, Check, ChevronLeft, ImagePlus, Plus, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
+import { ModelManager } from '../components/Models'
 import { PhotoManager } from '../components/Photos'
 import { Alert, Field, Section, Spinner, useTitle, useToast } from '../components/ui'
 import type { Json, Tables } from '../lib/database.types'
@@ -141,6 +142,7 @@ export function ProductForm() {
       {error && <div className="mb-5"><Alert>{error}</Alert></div>}
 
       {gelato && row && <div className="mb-8"><PhotoManager key={row.id} product={row} onChange={reloadRow} /></div>}
+      {gelato && row && <div className="mb-8"><ModelManager key={row.id} product={row} onChange={reloadRow} /></div>}
 
       <form onSubmit={submit} className="grid gap-6 pb-24 xl:grid-cols-[1fr_340px]">
         <div className="space-y-6">

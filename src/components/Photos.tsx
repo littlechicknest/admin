@@ -1,7 +1,7 @@
 import { EyeOff, GripVertical, Trash2, Undo2, Upload } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Json } from '../lib/database.types'
-import type { Photo } from '../lib/mockups'
+import type { Gender, Photo } from '../lib/mockups'
 import { asPhotos, oneAtATime, paletteOf, removeFiles, uploadMockups, type Product, type UploadResult } from '../lib/upload'
 import { supabase } from '../lib/supabase'
 import { Alert } from './ui'
@@ -66,6 +66,8 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
     ...photos.filter((p) => p.src !== 'gelato' && !inGelato.has(p.url)),
   ].sort((a, b) => rank(a) - rank(b))
   const names = colors.map((c) => c.name)
+  // clothes for grown-ups can show a man or a woman wearing them
+  const people = ['Men', 'Women', 'Unisex'].includes(product.category) || all.some((p) => p.gender)
   const lost = (p: Photo) => names.length > 0 && !names.includes(p.color ?? '')
   const hidden = all.filter((p) => p.hidden)
   const shown = all.filter((p) => !p.hidden)
@@ -120,6 +122,12 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
       <UploadButton big productId={product.id} onDone={uploaded} />
       <div aria-live="polite" className="sticky top-2 z-10">{msg && <Alert tone={msg.problem ? 'error' : 'success'}>{msg.text}</Alert>}</div>
 
+      {people && (
+        <p className="rounded-xl bg-orange-soft p-4 text-base text-olive">
+          <strong>Man or woman:</strong> pictures are marked for you from their file names (for example <em>person2_female_front</em>). For a Unisex product, the shop’s <strong>Men</strong> page shows only the pictures marked <strong>Man</strong> and the <strong>Women</strong> page only those marked <strong>Woman</strong>, without Gelato’s plain picture. Pictures with nobody in them show on both. Change it under a picture if it is wrong.
+        </p>
+      )}
+
       <p className="flex items-center gap-2 text-base text-olive"><GripVertical className="size-5 shrink-0" aria-hidden /> Drag a picture to change its place, or choose a number under it. Number 1 is the main picture.</p>
 
       {groups.map((g) => (
@@ -153,6 +161,7 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
                 <a href={p.url} target="_blank" rel="noopener noreferrer" draggable={false} className="relative block cursor-[inherit]">
                   <img src={p.url} alt={`${product.title} ${p.color ?? ''}`} loading="lazy" draggable={false} className="aspect-square w-full bg-cream-2 object-cover" />
                   {!lost(p) && <span className="absolute top-2 left-2 rounded bg-olive px-2 py-0.5 text-sm font-semibold text-white">{i === 0 ? '1 · Main picture' : i + 1}</span>}
+                  {people && (p.gender || p.src === 'gelato') && <span className="absolute right-2 bottom-2 rounded bg-white/90 px-2 py-0.5 text-sm font-semibold text-olive">{p.src === 'gelato' ? 'Gelato' : p.gender === 'male' ? 'Man' : 'Woman'}</span>}
                 </a>
                 <div className="flex flex-1 flex-col gap-2 p-3">
                   {names.length > 0 && (
@@ -164,6 +173,15 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
                     </label>
                   )}
                   {p.check && <button type="button" className="btn-dark py-2" onClick={() => void change([p], ({ check: _c, ...x }) => x)}>Yes, it is {p.color}</button>}
+                  {people && p.src !== 'gelato' && (
+                    <label className="block text-xs font-semibold text-olive">Who is wearing it
+                      <select className="input mt-1 py-2" value={p.gender ?? NONE} onChange={(e) => void change([p], ({ gender: _g, ...x }) => (e.target.value === NONE ? x : { ...x, gender: e.target.value as Gender }))}>
+                        <option value={NONE}>Nobody / both</option>
+                        <option value="male">Man</option>
+                        <option value="female">Woman</option>
+                      </select>
+                    </label>
+                  )}
                   {options.length > 0 && (
                     <label className="block text-xs font-semibold text-olive">Design
                       <select className="input mt-1 py-2" value={p.option ?? NONE} onChange={(e) => void change([p], (x) => ({ ...x, option: e.target.value === NONE ? null : e.target.value }))}>

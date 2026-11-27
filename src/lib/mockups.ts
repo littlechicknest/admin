@@ -2,7 +2,9 @@
 import { unzipSync } from 'fflate'
 
 /** One picture of a product. `src: 'gelato'` corrects a picture that comes from Gelato; `check` = colour guessed from the pixels. */
-export type Photo = { url: string; color: string | null; option: string | null; src?: 'gelato'; hidden?: true; check?: true }
+export type Photo = { url: string; color: string | null; option: string | null; gender?: Gender; src?: 'gelato'; hidden?: true; check?: true }
+/** Who wears it in the picture; none = no person, or both. Unisex products show only one in the shop's Men / Women pages. */
+export type Gender = 'male' | 'female'
 export type Palette = {
   colors: { name: string; hex?: string }[]
   /** design choices ("Design Option 1"); empty for products with normal sizes */
@@ -52,7 +54,15 @@ function detectOption(path: string, options: string[]): string | null {
   return options.find((o) => hasWords(t, norm(o))) ?? (n && options.find((o) => norm(o).endsWith(` ${n}`))) ?? null
 }
 
-export const detect = (path: string, p: Palette) => ({ color: detectColor(path, p), option: detectOption(path, p.options) })
+/** "person2_female_front", "model_woman1", "premium_model_male_man2": female words are checked first ("female" contains "male"). */
+export function detectGender(path: string): Gender | null {
+  const t = norm(path.split('/').at(-1)!.replace(/\.[a-z0-9]+$/i, ''))
+  if (/\b(female|woman|women|womens|lady|ladies)\d*\b/.test(t)) return 'female'
+  if (/\b(male|man|men|mens)\d*\b/.test(t)) return 'male'
+  return null
+}
+
+export const detect = (path: string, p: Palette) => ({ color: detectColor(path, p), option: detectOption(path, p.options), gender: detectGender(path) })
 
 /** False when the zip's Gelato folders all belong to some other product. */
 export function looksRight(paths: string[], skus: Palette['skus']) {

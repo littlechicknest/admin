@@ -1,5 +1,5 @@
 import type { Json, Tables } from './database.types'
-import { detect, looksRight, readPics, viewRank, voteColor, type Palette, type Photo, type Pic } from './mockups'
+import { detect, looksRight, readPics, viewRank, voteColor, type Gender, type Palette, type Photo, type Pic } from './mockups'
 import { asVariants } from './shop'
 import { supabase } from './supabase'
 
@@ -95,16 +95,20 @@ export async function uploadMockups(productId: string, files: File[], onProgress
   const fileOf = (url: string) => url.split('/').at(-1)
   const added = new Map<string, Photo>()
   const order = new Map<string, number>()
+  /** pictures uploaded before the shop knew man / woman: tagged when the same ZIP comes again */
+  const retag = new Map<string, Gender>()
   let done = 0, repeats = 0
   const one = async (pic: Pic, i: number) => {
     try {
       const { url, bitmap } = await store(folder, pic.blob, 1600)
-      if (added.has(url) || have.some((x) => x.url === url || (fileOf(x.url) === fileOf(url) && (!color || x.color === color)))) repeats++
-      else {
-        const found = { ...detect(pic.path, palette), ...(color && { color }) }
+      const { gender, ...found } = { ...detect(pic.path, palette), ...(color && { color }) }
+      if (added.has(url) || have.some((x) => x.url === url || (fileOf(x.url) === fileOf(url) && (!color || x.color === color)))) {
+        repeats++
+        if (gender) retag.set(fileOf(url)!, gender)
+      } else {
         const guess = found.color || !palette.colors.length ? null : voteColor(centrePixels(bitmap), palette.colors)
         order.set(url, i)
-        added.set(url, { url, color: found.color ?? guess, option: found.option, ...(guess && { check: true as const }) })
+        added.set(url, { url, color: found.color ?? guess, option: found.option, ...(gender && { gender }), ...(guess && { check: true as const }) })
       }
       bitmap.close()
     } catch (e) {
@@ -116,25 +120,48 @@ export async function uploadMockups(productId: string, files: File[], onProgress
   for (let i = 0; i < pics.length; i += 4) await Promise.all(pics.slice(i, i + 4).map((x, n) => one(x, i + n)))
 
   const list = [...added.values()].sort((a, b) => order.get(a.url)! - order.get(b.url)!)
-  if (list.length) {
+  const tagged = have.filter((x) => !x.gender && retag.has(fileOf(x.url)!)).length
+  if (list.length || tagged) {
     await oneAtATime(p.id, async () => {
       // the sync or another tab may have changed the product meanwhile
       const { data: fresh, error: e2 } = await supabase.from('products').select('photos').eq('id', p.id).single()
       if (e2) throw e2
-      const { error: e3 } = await supabase.from('products').update({ photos: [...asPhotos(fresh.photos), ...list] as unknown as Json, is_new: false }).eq('id', p.id)
+      const old = asPhotos(fresh.photos).map((x) => (!x.gender && retag.has(fileOf(x.url)!) ? { ...x, gender: retag.get(fileOf(x.url)!) } : x))
+      const { error: e3 } = await supabase.from('products').update({ photos: [...old, ...list] as unknown as Json, ...(list.length > 0 && { is_new: false }) }).eq('id', p.id)
       if (e3) throw e3
     })
   }
 
+  const men = list.filter((x) => x.gender === 'male').length, women = list.filter((x) => x.gender === 'female').length
   const per = new Map<string, number>()
   for (const x of list) if (x.color) per.set(x.color, (per.get(x.color) ?? 0) + 1)
   const unknown = palette.colors.length ? list.filter((x) => !x.color).length : 0
   const text = [
     `${list.length} ${list.length === 1 ? 'picture' : 'pictures'} added${per.size ? ` (${[...per].map(([c, n]) => `${c}: ${n}`).join(', ')})` : ''}.`,
+    (men || women) && `${men} show a man and ${women} show a woman.`,
     unknown && `${unknown} need a colour. They are at the top, please choose one.`,
     list.some((x) => x.check) && 'Some colours were guessed from the picture. Please check the ones marked "Is this right?".',
     repeats && `${repeats} were already uploaded.`,
+    tagged && `${tagged} of those are now marked as man or woman.`,
     skipped.length && `Could not use: ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}`,
   ].filter(Boolean).join(' ')
   return { text, problem: !!unknown || !!skipped.length }
+}
+
+/** Copies Gelato's short-lived 3D design picture into our storage, unchanged, and returns its lasting link. */
+export async function keepModelImage(productId: string, image: string): Promise<string> {
+  let blob: Blob
+  try {
+    const r = await fetch(image)
+    if (!r.ok) throw new Error(String(r.status))
+    blob = await r.blob()
+  } catch {
+    throw new Error('This 3D code has run out (Gelato’s codes only work for one day). Please copy a fresh one from Gelato and paste it again.')
+  }
+  if (!blob.type.startsWith('image/') || blob.size > 20 * 1024 * 1024) throw new Error('Gelato’s 3D picture could not be read. Please copy a fresh code.')
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('')
+  const path = `models/${productId}/${hash}.${blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png'}`
+  const { error } = await bucket().upload(path, blob, { contentType: blob.type, cacheControl: '31536000', upsert: true })
+  if (error) throw error
+  return bucket().getPublicUrl(path).data.publicUrl
 }
