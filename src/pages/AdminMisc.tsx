@@ -193,6 +193,7 @@ export function AdminSettings() {
   const [margin, setMargin] = useState(50)
   const [zones, setZones] = useState<ZoneForm[]>([])
   const [mode, setMode] = useState<'test' | 'live'>('test')
+  const [unisex, setUnisex] = useState(true)
   const [example, setExample] = useState('15')
   const [msg, setMsg] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
   const [syncing, setSyncing] = useState<string | null>(null)
@@ -206,6 +207,7 @@ export function AdminSettings() {
       setMargin(data.global_margin_percent)
       setZones(toForm(data.shipping_zones))
       setMode(data.checkout_mode === 'live' ? 'live' : 'test')
+      setUnisex(data.show_unisex)
     })
   }, [])
 
@@ -215,7 +217,7 @@ export function AdminSettings() {
     const checked = fromForm(zones)
     if ('problem' in checked) return setMsg({ tone: 'error', text: checked.problem })
     const { data, error } = await supabase.from('store_settings')
-      .update({ global_margin_percent: margin, shipping_zones: checked.zones as unknown as Json, checkout_mode: mode }).eq('id', 1).select().single()
+      .update({ global_margin_percent: margin, shipping_zones: checked.zones as unknown as Json, checkout_mode: mode, show_unisex: unisex }).eq('id', 1).select().single()
     if (error) return setMsg({ tone: 'error', text: error.message })
     setS(data)
     setZones(toForm(data.shipping_zones))
@@ -231,7 +233,7 @@ export function AdminSettings() {
   }
 
   const base = Math.max(0, Number(example) || 0)
-  const dirty = margin !== s.global_margin_percent || JSON.stringify(zones) !== JSON.stringify(toForm(s.shipping_zones)) || mode !== s.checkout_mode
+  const dirty = margin !== s.global_margin_percent || JSON.stringify(zones) !== JSON.stringify(toForm(s.shipping_zones)) || mode !== s.checkout_mode || unisex !== s.show_unisex
   const setZone = (i: number, patch: Partial<ZoneForm>) => setZones((list) => list.map((z, n) => (n === i ? { ...z, ...patch } : z)))
   const unplaced = COUNTRIES.filter(([c]) => !zones.some((z) => z.countries.includes(c)))
 
@@ -292,6 +294,14 @@ export function AdminSettings() {
             </ul>
             {unplaced.length > 0 && <p className="mt-2 text-sm text-red-700">Not delivered to (customers there can’t check out): {unplaced.map(([, n]) => n).join(', ')}</p>}
           </div>
+          <fieldset className="rounded-lg border border-line p-4">
+            <legend className="px-1 text-sm font-bold text-olive">Unisex category</legend>
+            <label className="flex cursor-pointer items-start gap-3 text-sm">
+              <input type="checkbox" checked={unisex} onChange={(e) => setUnisex(e.target.checked)} className="mt-0.5 size-5 accent-orange" />
+              <span><strong className="block text-olive">Show a “Unisex” category in the shop</strong>
+                <span className="text-xs text-muted">Untick to hide it: no Unisex tab or link anywhere in the shop. Unisex products still show under Men’s (on a man) and Women’s (on a woman), and in Shop all.</span></span>
+            </label>
+          </fieldset>
           <fieldset className="rounded-lg border border-line p-4">
             <legend className="px-1 text-sm font-bold text-olive">Checkout mode</legend>
             <div className="grid gap-2 sm:grid-cols-2">
