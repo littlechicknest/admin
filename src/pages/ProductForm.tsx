@@ -142,7 +142,7 @@ export function ProductForm() {
       {error && <div className="mb-5"><Alert>{error}</Alert></div>}
 
       {gelato && row && <div className="mb-8"><PhotoManager key={row.id} product={row} onChange={reloadRow} /></div>}
-      {gelato && row && <div className="mb-8"><ModelManager key={row.id} product={row} onChange={reloadRow} /></div>}
+      {row && <div className="mb-8"><ModelManager key={row.id} product={row} onChange={reloadRow} /></div>}
 
       <form onSubmit={submit} className="grid gap-6 pb-24 xl:grid-cols-[1fr_340px]">
         <div className="space-y-6">

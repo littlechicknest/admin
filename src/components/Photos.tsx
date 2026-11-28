@@ -68,6 +68,15 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
   const names = colors.map((c) => c.name)
   // clothes for grown-ups can show a man or a woman wearing them
   const people = ['Men', 'Women', 'Unisex'].includes(product.category) || all.some((p) => p.gender)
+  // Unisex: each colour's pictures in a Man, a Woman and an "everyone" part, as the shop's Men / Women pages use them
+  const split = product.category === 'Unisex'
+  const partsOf = (items: Photo[], byGender: boolean) => byGender
+    ? [
+        { key: 'male', title: 'Man', note: 'Shown on the Men page. Number 1 is the main picture there.', items: items.filter((p) => p.gender === 'male') },
+        { key: 'female', title: 'Woman', note: 'Shown on the Women page. Number 1 is the main picture there.', items: items.filter((p) => p.gender === 'female') },
+        { key: 'other', title: 'Gelato picture and pictures with nobody', note: 'Gelato’s picture is shown only on the Unisex page. Pictures with nobody show on both, after the Man / Woman ones.', items: items.filter((p) => p.gender !== 'male' && p.gender !== 'female') },
+      ]
+    : [{ key: 'all', title: '', note: '', items }]
   const lost = (p: Photo) => names.length > 0 && !names.includes(p.color ?? '')
   const hidden = all.filter((p) => p.hidden)
   const shown = all.filter((p) => !p.hidden)
@@ -99,11 +108,14 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
     })
   }
   const setColor = (items: Photo[], color: string) => change(items, ({ check: _c, ...p }) => ({ ...p, color }))
-  /** Moves a picture to another place among the pictures of its colour. */
-  const move = async (items: Photo[], i: number, to: number) => {
+  /** Moves a picture to another place among `part` (some or all of its colour's pictures); the colour's other pictures keep their places. */
+  const move = async (items: Photo[], part: Photo[], i: number, to: number) => {
     if (i === to) return
-    const urls = items.map((p) => p.url)
-    urls.splice(to, 0, ...urls.splice(i, 1))
+    const moved = part.map((p) => p.url)
+    moved.splice(to, 0, ...moved.splice(i, 1))
+    const inPart = new Set(moved)
+    let k = 0
+    const urls = items.map((p) => (inPart.has(p.url) ? moved[k++] : p.url))
     const next = [...order.filter((u) => !urls.includes(u) && all.some((p) => p.url === u)), ...urls]
     setOrder(next)
     const { error } = await supabase.from('products').update({ photo_order: next }).eq('id', product.id)
@@ -124,7 +136,7 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
 
       {people && (
         <p className="rounded-xl bg-orange-soft p-4 text-base text-olive">
-          <strong>Man or woman:</strong> pictures are marked for you from their file names (for example <em>person2_female_front</em>). For a Unisex product, the shop’s <strong>Men</strong> page shows only the pictures marked <strong>Man</strong> and the <strong>Women</strong> page only those marked <strong>Woman</strong>, without Gelato’s plain picture. Pictures with nobody in them show on both. Change it under a picture if it is wrong.
+          <strong>Man or woman:</strong> pictures are marked for you from their file names (for example <em>person2_female_front</em>). For a Unisex product, the shop’s <strong>Men</strong> page shows only the pictures marked <strong>Man</strong> and the <strong>Women</strong> page only those marked <strong>Woman</strong>, without Gelato’s plain picture. Pictures with nobody in them show on both. Change it under a picture if it is wrong.{product.category === 'Unisex' && <> Below, each colour is split into <strong>Man</strong>, <strong>Woman</strong> and <strong>everyone</strong> pictures.</>}
         </p>
       )}
 
@@ -150,62 +162,77 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
             </div>
           </div>
           {g.items.length === 0 && <p className="text-muted">No picture yet, so the shop shows another colour’s picture here. In Gelato, select the main mockup for this colour and save, or add your own picture with the button.</p>}
-          <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
-            {g.items.map((p, i) => (
-              <li key={p.url} draggable={g.key !== NONE && g.items.length > 1}
-                onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.url); setDrag({ group: g.key, i, over: i }) }}
-                onDragOver={(e) => { if (drag?.group === g.key) { e.preventDefault(); if (drag.over !== i) setDrag({ ...drag, over: i }) } }}
-                onDrop={(e) => { if (drag?.group === g.key) { e.preventDefault(); void move(g.items, drag.i, i) } }}
-                onDragEnd={() => setDrag(null)}
-                className={`${g.key !== NONE && g.items.length > 1 ? 'cursor-grab' : ''} ${drag?.group === g.key && drag.i === i ? 'opacity-40' : ''} ${drag?.group === g.key && drag.over === i && drag.i !== i ? 'ring-4 ring-orange' : ''} flex flex-col overflow-hidden rounded-xl border-2 bg-paper ${p.check || lost(p) ? 'border-red-400' : 'border-line'}`}>
-                <a href={p.url} target="_blank" rel="noopener noreferrer" draggable={false} className="relative block cursor-[inherit]">
-                  <img src={p.url} alt={`${product.title} ${p.color ?? ''}`} loading="lazy" draggable={false} className="aspect-square w-full bg-cream-2 object-cover" />
-                  {!lost(p) && <span className="absolute top-2 left-2 rounded bg-olive px-2 py-0.5 text-sm font-semibold text-white">{i === 0 ? '1 · Main picture' : i + 1}</span>}
-                  {people && (p.gender || p.src === 'gelato') && <span className="absolute right-2 bottom-2 rounded bg-white/90 px-2 py-0.5 text-sm font-semibold text-olive">{p.src === 'gelato' ? 'Gelato' : p.gender === 'male' ? 'Man' : 'Woman'}</span>}
-                </a>
-                <div className="flex flex-1 flex-col gap-2 p-3">
-                  {names.length > 0 && (
-                    <label className="block text-xs font-semibold text-olive">{p.check ? <span className="text-red-700">Is this right?</span> : 'Colour'}
-                      <select className="input mt-1 py-2" value={lost(p) ? '' : p.color ?? ''} onChange={(e) => void setColor([p], e.target.value)}>
-                        {lost(p) && <option value="" disabled>Choose a colour…</option>}
-                        {names.map((n) => <option key={n}>{n}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  {p.check && <button type="button" className="btn-dark py-2" onClick={() => void change([p], ({ check: _c, ...x }) => x)}>Yes, it is {p.color}</button>}
-                  {people && p.src !== 'gelato' && (
-                    <label className="block text-xs font-semibold text-olive">Who is wearing it
-                      <select className="input mt-1 py-2" value={p.gender ?? NONE} onChange={(e) => void change([p], ({ gender: _g, ...x }) => (e.target.value === NONE ? x : { ...x, gender: e.target.value as Gender }))}>
-                        <option value={NONE}>Nobody / both</option>
-                        <option value="male">Man</option>
-                        <option value="female">Woman</option>
-                      </select>
-                    </label>
-                  )}
-                  {options.length > 0 && (
-                    <label className="block text-xs font-semibold text-olive">Design
-                      <select className="input mt-1 py-2" value={p.option ?? NONE} onChange={(e) => void change([p], (x) => ({ ...x, option: e.target.value === NONE ? null : e.target.value }))}>
-                        <option value={NONE}>All designs</option>
-                        {options.map((o) => <option key={o}>{o}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  {g.key !== NONE && g.items.length > 1 && (
-                    <label className="block text-xs font-semibold text-olive">Position
-                      <select className="input mt-1 py-2" value={i} onChange={(e) => void move(g.items, i, Number(e.target.value))}>
-                        {g.items.map((x, n) => <option key={x.url} value={n}>{n === 0 ? '1 (main)' : n + 1}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  <div className="mt-auto flex flex-wrap gap-1 text-[13px] font-semibold">
-                    <button type="button" onClick={() => void remove(p)} className="flex items-center gap-1 rounded px-2 py-1.5 text-red-700 hover:bg-red-50">
-                      {p.src === 'gelato' ? <><EyeOff className="size-4" aria-hidden /> Hide</> : <><Trash2 className="size-4" aria-hidden /> Delete</>}
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {g.items.length > 0 && partsOf(g.items, split && g.key !== NONE).map((part) => {
+            const dk = `${g.key}|${part.key}`
+            return (
+              <div key={part.key} className={split && g.key !== NONE ? 'mt-4 border-t border-line pt-4 first:mt-0 first:border-0 first:pt-0' : ''}>
+                {split && g.key !== NONE && (
+                  <h3 className="mb-3 flex flex-wrap items-baseline gap-x-3 text-lg">{part.title}
+                    <span className="font-sans text-sm font-normal text-muted">{part.items.length || 'no'} {part.items.length === 1 ? 'picture' : 'pictures'} · {part.note}</span>
+                  </h3>
+                )}
+                {split && g.key !== NONE && part.key !== 'other' && !part.items.length && g.items.length > 0 && (
+                  <p className="mb-2 text-muted">None yet, so the {part.key === 'male' ? 'Men' : 'Women'} page shows this colour’s other pictures. Change “Who is wearing it” under a picture, or upload the Gelato ZIP again.</p>
+                )}
+              <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
+                {part.items.map((p, i) => (
+                  <li key={p.url} draggable={g.key !== NONE && part.items.length > 1}
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.url); setDrag({ group: dk, i, over: i }) }}
+                    onDragOver={(e) => { if (drag?.group === dk) { e.preventDefault(); if (drag.over !== i) setDrag({ ...drag, over: i }) } }}
+                    onDrop={(e) => { if (drag?.group === dk) { e.preventDefault(); void move(g.items, part.items, drag.i, i) } }}
+                    onDragEnd={() => setDrag(null)}
+                    className={`${g.key !== NONE && part.items.length > 1 ? 'cursor-grab' : ''} ${drag?.group === dk && drag.i === i ? 'opacity-40' : ''} ${drag?.group === dk && drag.over === i && drag.i !== i ? 'ring-4 ring-orange' : ''} flex flex-col overflow-hidden rounded-xl border-2 bg-paper ${p.check || lost(p) ? 'border-red-400' : 'border-line'}`}>
+                    <a href={p.url} target="_blank" rel="noopener noreferrer" draggable={false} className="relative block cursor-[inherit]">
+                      <img src={p.url} alt={`${product.title} ${p.color ?? ''}`} loading="lazy" draggable={false} className="aspect-square w-full bg-cream-2 object-cover" />
+                      {!lost(p) && <span className="absolute top-2 left-2 rounded bg-olive px-2 py-0.5 text-sm font-semibold text-white">{i === 0 && part.key !== 'other' ? '1 · Main picture' : i + 1}</span>}
+                      {people && (p.gender || p.src === 'gelato') && <span className="absolute right-2 bottom-2 rounded bg-white/90 px-2 py-0.5 text-sm font-semibold text-olive">{p.src === 'gelato' ? 'Gelato' : p.gender === 'male' ? 'Man' : 'Woman'}</span>}
+                    </a>
+                    <div className="flex flex-1 flex-col gap-2 p-3">
+                      {names.length > 0 && (
+                        <label className="block text-xs font-semibold text-olive">{p.check ? <span className="text-red-700">Is this right?</span> : 'Colour'}
+                          <select className="input mt-1 py-2" value={lost(p) ? '' : p.color ?? ''} onChange={(e) => void setColor([p], e.target.value)}>
+                            {lost(p) && <option value="" disabled>Choose a colour…</option>}
+                            {names.map((n) => <option key={n}>{n}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      {p.check && <button type="button" className="btn-dark py-2" onClick={() => void change([p], ({ check: _c, ...x }) => x)}>Yes, it is {p.color}</button>}
+                      {people && p.src !== 'gelato' && (
+                        <label className="block text-xs font-semibold text-olive">Who is wearing it
+                          <select className="input mt-1 py-2" value={p.gender ?? NONE} onChange={(e) => void change([p], ({ gender: _g, ...x }) => (e.target.value === NONE ? x : { ...x, gender: e.target.value as Gender }))}>
+                            <option value={NONE}>Nobody / both</option>
+                            <option value="male">Man</option>
+                            <option value="female">Woman</option>
+                          </select>
+                        </label>
+                      )}
+                      {options.length > 0 && (
+                        <label className="block text-xs font-semibold text-olive">Design
+                          <select className="input mt-1 py-2" value={p.option ?? NONE} onChange={(e) => void change([p], (x) => ({ ...x, option: e.target.value === NONE ? null : e.target.value }))}>
+                            <option value={NONE}>All designs</option>
+                            {options.map((o) => <option key={o}>{o}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      {g.key !== NONE && part.items.length > 1 && (
+                        <label className="block text-xs font-semibold text-olive">Position
+                          <select className="input mt-1 py-2" value={i} onChange={(e) => void move(g.items, part.items, i, Number(e.target.value))}>
+                            {part.items.map((x, n) => <option key={x.url} value={n}>{n === 0 ? '1 (main)' : n + 1}</option>)}
+                          </select>
+                        </label>
+                      )}
+                      <div className="mt-auto flex flex-wrap gap-1 text-[13px] font-semibold">
+                        <button type="button" onClick={() => void remove(p)} className="flex items-center gap-1 rounded px-2 py-1.5 text-red-700 hover:bg-red-50">
+                          {p.src === 'gelato' ? <><EyeOff className="size-4" aria-hidden /> Hide</> : <><Trash2 className="size-4" aria-hidden /> Delete</>}
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              </div>
+            )
+          })}
         </div>
       ))}
 

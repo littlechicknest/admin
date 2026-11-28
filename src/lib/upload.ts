@@ -1,5 +1,6 @@
 import type { Json, Tables } from './database.types'
 import { detect, looksRight, readPics, viewRank, voteColor, type Gender, type Palette, type Photo, type Pic } from './mockups'
+import { glbProblem } from './model3d'
 import { asVariants } from './shop'
 import { supabase } from './supabase'
 
@@ -148,20 +149,22 @@ export async function uploadMockups(productId: string, files: File[], onProgress
   return { text, problem: !!unknown || !!skipped.length }
 }
 
-/** Copies Gelato's short-lived 3D design picture into our storage, unchanged, and returns its lasting link. */
-export async function keepModelImage(productId: string, image: string): Promise<string> {
-  let blob: Blob
-  try {
-    const r = await fetch(image)
-    if (!r.ok) throw new Error(String(r.status))
-    blob = await r.blob()
-  } catch {
-    throw new Error('This 3D code has run out (Gelato’s codes only work for one day). Please copy a fresh one from Gelato and paste it again.')
-  }
-  if (!blob.type.startsWith('image/') || blob.size > 20 * 1024 * 1024) throw new Error('Gelato’s 3D picture could not be read. Please copy a fresh code.')
-  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('')
-  const path = `models/${productId}/${hash}.${blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png'}`
-  const { error } = await bucket().upload(path, blob, { contentType: blob.type, cacheControl: '31536000', upsert: true })
-  if (error) throw error
-  return bucket().getPublicUrl(path).data.publicUrl
+const models = () => supabase.storage.from('product-models')
+
+/** Saves a .glb 3D model under a name made from its content and returns its public link. */
+export async function storeModel(productId: string, file: File): Promise<string> {
+  const bytes = await file.arrayBuffer()
+  const problem = glbProblem(file.name, new Uint8Array(bytes.slice(0, 4)), file.size)
+  if (problem) throw new Error(problem)
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('')
+  const path = `${productId}/${hash}.glb`
+  const { error } = await models().upload(path, new Blob([bytes], { type: 'model/gltf-binary' }), { contentType: 'model/gltf-binary', cacheControl: '31536000', upsert: true })
+  if (error) throw new Error(/exceed|too large|413/i.test(error.message) ? 'This 3D file is too big. Please keep it under 50 MB.' : error.message)
+  return models().getPublicUrl(path).data.publicUrl
+}
+
+/** Deletes 3D files that are no longer used. */
+export async function removeModels(urls: string[]) {
+  const paths = urls.map((u) => u.split('/product-models/')[1]).filter(Boolean)
+  if (paths.length) await models().remove(paths)
 }

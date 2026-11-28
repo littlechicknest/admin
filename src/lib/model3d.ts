@@ -1,27 +1,20 @@
-// Gelato's 3D preview: an <iframe> whose link holds the product code and a design picture that Gelato deletes after a day.
+// 3D previews: .glb files the owner uploads. products.models = colour -> public link ('' = every colour).
 
-const HOST = /(^|\.)gelato\.tech$/i
+export const MAX_GLB = 50 * 1024 * 1024
 
-export type Model3d = { link: URL; image: string; uid: string }
-
-/** Reads the iframe code (or just its link) copied from Gelato. Null when it isn't a Gelato 3D preview. */
-export function parse3d(code: string): Model3d | null {
-  const raw = code.match(/src\s*=\s*["']([^"']+)["']/i)?.[1] ?? code.trim()
-  const text = raw.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-  let link: URL
-  try { link = new URL(text) } catch { return null }
-  const image = link.searchParams.get('image_url') ?? ''
-  const uid = link.searchParams.get('product_uid') ?? ''
-  if (link.protocol !== 'https:' || !HOST.test(link.hostname) || !/^https:\/\//i.test(image) || !uid) return null
-  return { link, image, uid }
+/** Why a file can't be used as a 3D model, or null when it is a .glb ("glTF" in its first 4 bytes). */
+export function glbProblem(name: string, head: Uint8Array, size: number): string | null {
+  if (!/\.glb$/i.test(name)) return 'Please choose a .glb file (a 3D model). Other 3D files like .gltf, .obj or .usdz do not work here.'
+  if (String.fromCharCode(...head.slice(0, 4)) !== 'glTF') return 'This file is not a real .glb 3D model. Please export it again as .glb (glTF binary).'
+  if (size > MAX_GLB) return 'This 3D file is too big. Please keep it under 50 MB.'
+  return null
 }
 
-/** The same preview, with the design picture we keep for good. */
-export function withImage(m: Model3d, image: string) {
-  const link = new URL(m.link)
-  link.searchParams.set('image_url', image)
-  return link.toString()
+/** A saved link the admin shows: a .glb in our 3D storage. */
+export const isModelLink = (u: unknown): u is string => {
+  if (typeof u !== 'string') return false
+  try {
+    const url = new URL(u)
+    return url.protocol === 'https:' && /^\/storage\/v1\/object\/public\/product-models\/.+\.glb$/i.test(url.pathname)
+  } catch { return false }
 }
-
-/** A saved link the shop may show in a frame. */
-export const isModelLink = (u: unknown): u is string => typeof u === 'string' && parse3d(u) !== null
