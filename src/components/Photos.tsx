@@ -127,11 +127,36 @@ export function PhotoManager({ product, onChange }: { product: Product; onChange
     if (confirm('Delete this picture?') && (await save((list) => list.filter((x) => x.url !== p.url)))) await removeFiles([p.url])
   }
 
+  /** Deletes every picture the owner added (ZIPs and own pictures); Gelato's own pictures stay. */
+  const mine = all.filter((p) => p.src !== 'gelato')
+  const [clearing, setClearing] = useState(false)
+  const removeMine = async () => {
+    if (!mine.length || !confirm(`Delete all ${mine.length} of your pictures from this product?
+
+Gelato’s own pictures stay. This cannot be undone, but you can upload the ZIP again.`)) return
+    setClearing(true)
+    const urls = new Set(mine.map((p) => p.url))
+    if (await save((list) => list.filter((x) => x.src === 'gelato' || inGelato.has(x.url)))) {
+      await removeFiles([...urls]).catch(() => undefined)
+      setMsg({ text: `Deleted ${urls.size} ${urls.size === 1 ? 'picture' : 'pictures'}. Gelato’s pictures are still here.`, problem: false })
+      void onChange()
+    }
+    setClearing(false)
+  }
+
   const uploaded = (r: UploadResult) => { setMsg(r); void onChange() }
 
   return (
     <section className="space-y-5">
       <UploadButton big productId={product.id} onDone={uploaded} />
+      {mine.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-red-200 bg-paper p-4">
+          <p className="text-base text-olive">You added <strong>{mine.length}</strong> {mine.length === 1 ? 'picture' : 'pictures'} here. Gelato’s own pictures are not counted.</p>
+          <button type="button" disabled={clearing} onClick={() => void removeMine()} className="flex items-center gap-2 rounded-lg border-2 border-red-300 bg-white px-4 py-2 font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">
+            <Trash2 className="size-5" aria-hidden /> {clearing ? 'Deleting…' : `Delete all my pictures (${mine.length})`}
+          </button>
+        </div>
+      )}
       <div aria-live="polite" className="sticky top-2 z-10">{msg && <Alert tone={msg.problem ? 'error' : 'success'}>{msg.text}</Alert>}</div>
 
       {people && (

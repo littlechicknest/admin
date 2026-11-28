@@ -57,7 +57,7 @@ export async function storeImage(folder: string, file: Blob, max = 2000): Promis
 
 export async function removeFiles(urls: string[]) {
   const paths = urls.map((u) => u.split('/product-images/')[1]).filter(Boolean)
-  if (paths.length) await bucket().remove(paths)
+  for (let i = 0; i < paths.length; i += 500) await bucket().remove(paths.slice(i, i + 500)) // storage takes at most 1000 per call
 }
 
 /** Middle of the picture, where the garment is. */
