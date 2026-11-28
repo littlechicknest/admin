@@ -41,7 +41,7 @@ export type Database = {
       }, 'product_id' | 'rating'>
       store_settings: Table<{
         checkout_mode: string; express_shipping: number; free_shipping_over: number; global_margin_percent: number; id: number
-        last_api_sync: string | null; last_product_sync: string | null; shipping_flat: number; site_images: Json; updated_at: string; usd_rates: Json
+        last_api_sync: string | null; last_product_sync: string | null; shipping_flat: number; shipping_zones: Json; site_images: Json; updated_at: string; usd_rates: Json
       }, never>
     }
     Views: { [_ in never]: never }

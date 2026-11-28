@@ -1,9 +1,10 @@
-import { Check, Download, EyeOff, Mail, RefreshCw, Trash2 } from 'lucide-react'
+import { Check, Download, EyeOff, Mail, RefreshCw, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Alert, Field, Spinner, Stars, useTitle } from '../components/ui'
-import type { Tables } from '../lib/database.types'
+import type { Json, Tables } from '../lib/database.types'
 import { formatDate, formatMoney, marginPrice, SHOP_URL } from '../lib/shop'
 import { csvCell } from '../lib/csv'
+import { COUNTRIES, countryName, fromForm, toForm, type ZoneForm } from '../lib/zones'
 import { functionError, supabase } from '../lib/supabase'
 import { AdminTitle } from './AdminLayout'
 
@@ -190,9 +191,7 @@ export function AdminSettings() {
   useTitle('Settings')
   const [s, setS] = useState<Tables<'store_settings'> | null>(null)
   const [margin, setMargin] = useState(50)
-  const [shipping, setShipping] = useState('0')
-  const [freeOver, setFreeOver] = useState('0')
-  const [express, setExpress] = useState('0')
+  const [zones, setZones] = useState<ZoneForm[]>([])
   const [mode, setMode] = useState<'test' | 'live'>('test')
   const [example, setExample] = useState('15')
   const [msg, setMsg] = useState<{ tone: 'error' | 'success'; text: string } | null>(null)
@@ -205,9 +204,7 @@ export function AdminSettings() {
       if (!data) return
       setS(data)
       setMargin(data.global_margin_percent)
-      setShipping(String(data.shipping_flat))
-      setFreeOver(String(data.free_shipping_over))
-      setExpress(String(data.express_shipping))
+      setZones(toForm(data.shipping_zones))
       setMode(data.checkout_mode === 'live' ? 'live' : 'test')
     })
   }, [])
@@ -215,13 +212,13 @@ export function AdminSettings() {
   if (!s) return <Spinner />
 
   const save = async () => {
-    const [ship, free, exp] = [shipping, freeOver, express].map(Number)
-    if (![ship, free, exp].every((n) => n >= 0)) return setMsg({ tone: 'error', text: 'Shipping amounts must be 0 or more.' })
-    const r2 = (n: number) => Math.round(n * 100) / 100
+    const checked = fromForm(zones)
+    if ('problem' in checked) return setMsg({ tone: 'error', text: checked.problem })
     const { data, error } = await supabase.from('store_settings')
-      .update({ global_margin_percent: margin, shipping_flat: r2(ship), free_shipping_over: r2(free), express_shipping: r2(exp), checkout_mode: mode }).eq('id', 1).select().single()
+      .update({ global_margin_percent: margin, shipping_zones: checked.zones as unknown as Json, checkout_mode: mode }).eq('id', 1).select().single()
     if (error) return setMsg({ tone: 'error', text: error.message })
     setS(data)
+    setZones(toForm(data.shipping_zones))
     setMsg({ tone: 'success', text: 'Saved. Shop prices updated instantly.' })
   }
 
@@ -234,8 +231,9 @@ export function AdminSettings() {
   }
 
   const base = Math.max(0, Number(example) || 0)
-  const dirty = margin !== s.global_margin_percent || Number(shipping) !== Number(s.shipping_flat) || Number(freeOver) !== Number(s.free_shipping_over)
-    || Number(express) !== Number(s.express_shipping) || mode !== s.checkout_mode
+  const dirty = margin !== s.global_margin_percent || JSON.stringify(zones) !== JSON.stringify(toForm(s.shipping_zones)) || mode !== s.checkout_mode
+  const setZone = (i: number, patch: Partial<ZoneForm>) => setZones((list) => list.map((z, n) => (n === i ? { ...z, ...patch } : z)))
+  const unplaced = COUNTRIES.filter(([c]) => !zones.some((z) => z.countries.includes(c)))
 
   return (
     <>
@@ -264,16 +262,35 @@ export function AdminSettings() {
               <span className="text-sm text-muted">in shop (profit {formatMoney(marginPrice(base, margin) - base)})</span>
             </div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Standard delivery (USD)" hint="0 = always free">
-              <input type="number" min="0" step="0.01" className="input" value={shipping} onChange={(e) => setShipping(e.target.value)} />
-            </Field>
-            <Field label="Free standard over (USD)" hint="0 = no free threshold">
-              <input type="number" min="0" step="0.01" className="input" value={freeOver} onChange={(e) => setFreeOver(e.target.value)} />
-            </Field>
-            <Field label="Express delivery (USD)">
-              <input type="number" min="0" step="0.01" className="input" value={express} onChange={(e) => setExpress(e.target.value)} />
-            </Field>
+          <div>
+            <h3 className="text-lg">Delivery prices</h3>
+            <p className="text-sm text-muted">Delivery is never free. Customers pay the price of the group their country is in (further away = more), plus “each extra item” for every item after the first. It is added to the card payment on Stripe. Prices in USD.</p>
+            <ul className="mt-3 space-y-3">
+              {zones.map((z, i) => (
+                <li key={i} className="rounded-lg border border-line p-4">
+                  <input className="input mb-3 font-semibold" aria-label="Group name" value={z.name} maxLength={60} onChange={(e) => setZone(i, { name: e.target.value })} />
+                  <div className="grid grid-cols-3 gap-3">
+                    <Field label="Standard"><input type="number" min="0.01" step="0.01" className="input" value={z.standard} onChange={(e) => setZone(i, { standard: e.target.value })} /></Field>
+                    <Field label="Express"><input type="number" min="0.01" step="0.01" className="input" value={z.express} onChange={(e) => setZone(i, { express: e.target.value })} /></Field>
+                    <Field label="Each extra item"><input type="number" min="0" step="0.01" className="input" value={z.extra} onChange={(e) => setZone(i, { extra: e.target.value })} /></Field>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {z.countries.map((c) => (
+                      <span key={c} className="flex items-center gap-1 rounded-full bg-cream-2 py-1 pr-1 pl-3 text-sm text-olive">{countryName(c)}
+                        <button type="button" aria-label={`Remove ${countryName(c)}`} onClick={() => setZone(i, { countries: z.countries.filter((x) => x !== c) })} className="grid size-6 place-items-center rounded-full hover:bg-sand"><X className="size-3.5" aria-hidden /></button>
+                      </span>
+                    ))}
+                    {unplaced.length > 0 && (
+                      <select className="input w-auto py-1.5 text-sm" value="" aria-label="Add a country" onChange={(e) => setZone(i, { countries: [...z.countries, e.target.value] })}>
+                        <option value="" disabled>+ Add country</option>
+                        {unplaced.map(([c, n]) => <option key={c} value={c}>{n}</option>)}
+                      </select>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {unplaced.length > 0 && <p className="mt-2 text-sm text-red-700">Not delivered to (customers there can’t check out): {unplaced.map(([, n]) => n).join(', ')}</p>}
           </div>
           <fieldset className="rounded-lg border border-line p-4">
             <legend className="px-1 text-sm font-bold text-olive">Checkout mode</legend>

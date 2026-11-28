@@ -20,7 +20,12 @@ function Preview({ src, title }: { src: string; title: string }) {
   }, [])
   if (ok === false) return <p className="text-red-700">The 3D viewer could not load. Please refresh the page.</p>
   if (!ok) return <div className="grid aspect-square w-full max-w-80 place-items-center rounded-lg border border-line bg-white"><Spinner /></div>
-  return createElement('model-viewer', { src, alt: title, 'camera-controls': '', 'auto-rotate': '', 'shadow-intensity': '1', class: 'block aspect-square w-full max-w-80 rounded-lg border border-line bg-white' })
+  // the viewer's own style fixes its height at 150px: it fills a square box instead
+  return (
+    <div className="aspect-square w-full max-w-80 overflow-hidden rounded-lg border border-line bg-white">
+      {createElement('model-viewer', { src, alt: title, 'camera-controls': '', 'auto-rotate': '', 'shadow-intensity': '1', style: { display: 'block', width: '100%', height: '100%' } })}
+    </div>
+  )
 }
 
 /** A 3D model (.glb file) for the whole product, and if needed a different one per colour. The shop shows a "3D preview" button only when there is one. */

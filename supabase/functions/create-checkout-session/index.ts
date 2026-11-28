@@ -89,9 +89,13 @@ Deno.serve(async (req) => {
   if (gone) return fail(req, 409, `Sorry, ${[gone.title, gone.color, gone.size].filter(Boolean).join(' / ')} is out of stock for your country right now. Please choose another option.`)
 
   const subtotal = round2(lines.reduce((n, l) => n + l.unit_price * l.quantity, 0))
-  const { data: shipCost, error: shipErr } = await admin.rpc('shipping_cost', { p_subtotal: subtotal, p_method: method })
+  // priced by destination zone + number of items (Admin > Settings); never free
+  const parcelItems = lines.reduce((n, l) => n + l.quantity, 0)
+  const { data: shipCost, error: shipErr } = await admin.rpc('shipping_cost', { p_country: address.country, p_items: parcelItems, p_method: method })
   if (shipErr) return fail(req, 500, 'Could not work out shipping.')
+  if (shipCost == null) return fail(req, 409, 'Sorry, we do not deliver to that country yet.')
   const shipping = round2(Number(shipCost))
+  if (!(shipping > 0)) return fail(req, 500, 'Could not work out shipping.')
   const { data: order, error: insErr } = await admin.from('orders').insert({
     user_id: user.id, email: user.email, items: lines, subtotal, shipping_amount: shipping, shipping_method: method,
     shipping_address: address, total_amount: round2(subtotal + shipping), currency: 'usd', status: 'pending', is_test: !isLiveKey,
@@ -120,7 +124,7 @@ Deno.serve(async (req) => {
       shipping_options: [{
         shipping_rate_data: {
           type: 'fixed_amount',
-          display_name: method === 'express' ? 'Express delivery' : shipping > 0 ? 'Standard delivery' : 'Free standard delivery',
+          display_name: `${method === 'express' ? 'Express' : 'Standard'} delivery to ${address.country}`,
           fixed_amount: { amount: Math.round(shipping * 100), currency: 'usd' },
         },
       }],
@@ -129,7 +133,13 @@ Deno.serve(async (req) => {
       expires_at: Math.floor(Date.now() / 1000) + 60 * 60, // 1 hour
     }, { idempotencyKey: `checkout-${order.id}` })
 
-    await admin.from('orders').update({ stripe_session_id: session.id }).eq('id', order.id)
+    const { error: linkErr } = await admin.from('orders').update({ stripe_session_id: session.id }).eq('id', order.id)
+    if (linkErr) {
+      // a payment that can't be matched to its order must never happen: don't send the customer to pay.
+      // The order and the unused session are kept (the session expires by itself and its webhook cleans up)
+      console.error('link session', order.id, linkErr.message)
+      return fail(req, 500, 'Could not start secure checkout. Please try again.')
+    }
     return json(req, { url: session.url })
   } catch (e) {
     console.error('stripe', e instanceof Error ? e.message : e)
